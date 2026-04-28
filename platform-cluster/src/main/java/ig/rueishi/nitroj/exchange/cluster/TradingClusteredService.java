@@ -27,9 +27,10 @@ import org.agrona.DirectBuffer;
  * <p>The deterministic ordering here is part of the recovery design. Snapshot
  * loading completes before any ingress message can be processed, timer events
  * are fanned out to their owners in a fixed order, and snapshots are written in
- * the same component order used by the recovery tests. Warmup harnesses can
- * install a temporary cluster shim before the real Aeron cluster is started and
- * then clear all warmed state before production traffic begins.</p>
+ * the same component order used by the recovery tests. Startup construction is
+ * also the allocation boundary for configured market-view books: ClusterMain
+ * preallocates those books before this service is launched so the first live
+ * market-data message should only mutate existing state.</p>
  */
 public final class TradingClusteredService implements ClusteredService {
     private final StrategyLifecycle strategyEngine;

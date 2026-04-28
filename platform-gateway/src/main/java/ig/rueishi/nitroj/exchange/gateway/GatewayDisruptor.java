@@ -27,7 +27,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * gateway startup, started before producers publish, stopped during shutdown.
  * Design intent: preserve the AMB-008 policy that ring-full market-data producers
  * can see a null claim and drop, while the ring itself remains allocation-free on
- * the successful claim/publish path.
+ * the successful claim/publish path. A successful claim transfers temporary
+ * ownership of the preallocated slot to the producer; publishing transfers that
+ * same slot to the single consumer, whose wrapper resets it before the ring entry
+ * can be reused.
  */
 public final class GatewayDisruptor implements AutoCloseable {
     public static final String DISRUPTOR_FULL_COUNTER_LABEL = "DISRUPTOR_FULL_COUNTER";
@@ -114,6 +117,10 @@ public final class GatewayDisruptor implements AutoCloseable {
 
     /**
      * Publishes a previously claimed slot.
+     *
+     * <p>This method only accepts slots returned by {@link #claimSlot()}. Rejecting
+     * unclaimed slots protects the Disruptor cursor from accidental publication of
+     * stale or synthetic entries during tests and producer error handling.
      *
      * @param slot slot returned by {@link #claimSlot()}
      * @throws IllegalArgumentException if the slot was not claimed

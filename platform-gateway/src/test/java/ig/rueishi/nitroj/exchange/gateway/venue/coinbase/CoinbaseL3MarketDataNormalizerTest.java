@@ -57,15 +57,15 @@ final class CoinbaseL3MarketDataNormalizerTest {
     }
 
     @Test
-    void unknownSymbolDropsWithoutPublishingAndLogsWarning() {
+    void unknownSymbolDropsWithoutPublishingAndIncrementsCounter() {
         final RecordingLogger logger = new RecordingLogger();
         try (Harness harness = Harness.notStarted(4, logger)) {
             harness.normalizer.onFixMessage(SESSION_ID, fix("35=W", "34=22", "55=DOGE-USD", "268=1",
                 "279=0", "269=1", "278=ignored", "270=1", "271=1"), 0, currentLength, 100L);
 
             assertThat(harness.disruptor.remainingCapacity()).isEqualTo(4);
-            assertThat(logger.warnings).hasSize(1);
-            assertThat(logger.warnings.getFirst()).contains("DOGE-USD");
+            assertThat(harness.normalizer.unknownSymbolDropCount()).isEqualTo(1);
+            assertThat(logger.warnings).isEmpty();
         }
     }
 

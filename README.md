@@ -1,18 +1,21 @@
 # NitroJExchange — High-Frequency Liquidity and Arbitrage Infrastructure
 ## A Multi-Venue, Multi-Strategy Pluggable Prop-Stack
 
-NitroJExchange is a Java 21 low-latency trading platform prototype , modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
+**NitroJ Exchange** is a Java 21 low-latency trading platform prototype , modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
 
-The active development line is **V11.0**. V10.0 is preserved as the frozen baseline, while V11.0 adds multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage.
+The active development line is **V12.0**. V10.0 is preserved as the original frozen baseline, while V11.0 is now the frozen architecture baseline for multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage. V12.0 is the low-latency hardening and evidence line for deterministic, zero-allocation steady-state hot paths.
 
 This repository is not a financial recommendation system. It is infrastructure code. Real venue connectivity must go through QA/UAT, credential review, exchange certification/onboarding, and production risk controls before live use.
 
 ## Current Status
 
 ```text
-Active spec:        NitroJEx_Master_Spec_V11.0.md
-Active plan:        nitrojex_implementation_plan_v2.0.0.md
-Migration doc:      NitroJEx_V10_to_V11_Migration.md
+Active spec:        NitroJEx_Master_Spec_V12.0.md
+Active plan:        nitrojex_implementation_plan_v3.0.0.md
+Migration doc:      NitroJEx_V11_to_V12_Migration.md
+Frozen V11 spec:    NitroJEx_Master_Spec_V11.0.md
+Frozen V11 plan:    nitrojex_implementation_plan_v2.0.0.md
+V10->V11 migration: NitroJEx_V10_to_V11_Migration.md
 Frozen V10 spec:    NitroJEx_Master_Spec_V10.0.md
 Frozen V10 plan:    nitrojex_implementation_plan_v1.4.0.md
 ```
@@ -27,9 +30,9 @@ The project should still be treated as **pre-QA / pre-UAT** for real Coinbase co
 
 NitroJEx targets **zero-allocation steady-state hot paths**, not literal zero allocation across the whole repository. Startup/config parsing, admin tooling, simulator code, diagnostics, REST polling, and tests may allocate. The trading hot path is the part that must be benchmarked toward `0 B/op`.
 
-## TODO: V12 Low-Latency Hardening
+## V12 Low-Latency Hardening
 
-V12 is planned as the low-latency, deterministic, zero-allocation hardening line. V11 establishes the architecture and Coinbase FIX L3 path, but it should not be marketed as fully proven zero-GC production trading infrastructure yet.
+V12 is the low-latency, deterministic, zero-allocation hardening line. V11 establishes the architecture and Coinbase FIX L3 path, but it should not be marketed as fully proven zero-GC production trading infrastructure yet.
 
 V12 goals:
 
@@ -39,11 +42,14 @@ V12 goals:
 - Make venue L3 books, consolidated L2 books, own-order overlays, and strategy liquidity views allocation-free after warmup under configured capacity limits.
 - Keep Coinbase REST JSON parsing explicitly outside the trading hot path, or replace it with a cold-path parser/boundary that cannot leak allocation-heavy objects into deterministic state.
 - Add benchmark gates or CI reports that prevent claiming `0 B/op` until allocation evidence exists.
+- Keep real Coinbase QA/UAT blocked until unit, integration, simulator, live-wire E2E, deterministic replay, and benchmark evidence gates pass.
 - Complete real Coinbase certification/QA/UAT before production connectivity claims.
 - Harden security and operations: secrets handling, credential rotation, audit trails, monitoring, alerting, failover, disaster recovery, and deployment evidence.
 - Strengthen financial correctness: reconciliation, kill switch, risk limits, rejected-order handling, disconnect recovery, self-trade prevention validation, and audit-grade evidence before live trading.
 
-Until V12 evidence exists, the correct claim is:
+V12 task-card work is complete, but production-facing claims still depend on
+archiving current release evidence. Until the release evidence bundle is current,
+the conservative claim remains:
 
 ```text
 NitroJEx is designed toward low-latency deterministic hot paths and has a roadmap to verified zero allocation / zero GC behavior. V11 is not yet benchmark-proven zero-GC.
@@ -70,8 +76,7 @@ NitroJEx is designed toward low-latency deterministic hot paths and has a roadma
 - Built-in `ArbStrategy` for venue and cross-venue arbitrage using executable edge, external-liquidity views, risk checks, and multi-leg order submission.
 - Strategy plugin extension model via `Strategy`, `StrategyContext`, and `StrategyEngine`, allowing additional strategies to be registered without changing the FIX or venue plugin layers.
 - Execution strategy extension model for future order-routing and execution algorithms such as TWAP, VWAP, smart order routing, pegged quoting, post-only management, liquidity taking, and hedge execution.
-- Coinbase exchange simulator and deterministic Coinbase FIX L3 E2E-style tests.
-- Planned Coinbase Simulator live-wire E2E tests for both Coinbase FIX L2 and L3 before real Coinbase QA/UAT.
+- Coinbase exchange simulator plus deterministic L2/L3 simulator and live-wire E2E tests before real Coinbase QA/UAT.
 - Startup scripts for one gateway process per venue.
 
 ## Repository Layout
@@ -88,8 +93,11 @@ NitroJEx is designed toward low-latency deterministic hot paths and has a roadma
 ├── NitroJEx_Master_Spec_V10.0.md
 ├── NitroJEx_Master_Spec_V11.0.md
 ├── NitroJEx_V10_to_V11_Migration.md
+├── NitroJEx_Master_Spec_V12.0.md
+├── NitroJEx_V11_to_V12_Migration.md
 ├── nitrojex_implementation_plan_v1.4.0.md
-└── nitrojex_implementation_plan_v2.0.0.md
+├── nitrojex_implementation_plan_v2.0.0.md
+└── nitrojex_implementation_plan_v3.0.0.md
 ```
 
 ## Modules
@@ -262,7 +270,17 @@ Run hot-path allocation benchmarks:
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmh
 ```
 
-The benchmark task runs JMH with `-prof gc`. For the declared trading hot path, `0 B/op` after warmup is the target. Any non-zero allocation must be treated as evidence, not embarrassment: document the benchmark, owner, reason, and remediation task before claiming zero-allocation readiness.
+Run the automated latency report task:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmhLatencyReport
+```
+
+The benchmark task runs JMH with `-prof gc`; `:platform-benchmarks:jmhLatencyReport`
+publishes the automated latency evidence. For the declared trading hot path,
+`0 B/op` after warmup is the target. Any non-zero allocation must be treated as
+evidence, not embarrassment: document the benchmark, owner, reason, and
+remediation task before claiming zero-allocation readiness.
 
 The default `test` task excludes tests tagged:
 
@@ -392,9 +410,16 @@ V11 includes a Coinbase FIX L3 implementation path and shared L2/L3 market-data 
 - Coinbase FIX L3 simulator tests.
 - Concrete Coinbase L3 FIX normalizer tests.
 
-Current automated Coinbase simulator coverage is harness-level. It validates simulator-generated L3 events, gateway normalization, SBE events, L3 book updates, derived L2, and consolidated L2 behavior without live Coinbase access.
+Current automated Coinbase simulator coverage includes harness-level and live-wire
+tests. It validates simulator-generated L2/L3 events, local TCP FIX simulator
+sessions, gateway normalization, SBE events, L3 book updates, derived L2,
+consolidated L2 behavior, strategy observation, egress, and order entry without
+live Coinbase access.
 
-The required pre-QA/UAT gap is now explicit in the V11 plan: add automated Coinbase Simulator live-wire tests for both L2 and L3. Those tests must start a local Coinbase simulator FIX endpoint/session fixture and prove:
+The required pre-QA/UAT gate is explicit in the V12 plan: automated Coinbase
+Simulator live-wire tests for both L2 and L3 must pass before real Coinbase
+QA/UAT. Those tests start a local Coinbase simulator FIX endpoint/session fixture
+and prove:
 
 ```text
 Coinbase simulator FIX session
@@ -571,9 +596,9 @@ Normal compile/check tasks already depend on the required generation tasks.
 
 ## Development Rules
 
-- Do not modify V10 spec/plan files.
-- Use V11 spec and plan for active work.
-- Use task IDs `TASK-101` and above for V11.
+- Do not modify frozen V10 or V11 spec/plan files.
+- Use V12 spec and plan for active work.
+- Use task IDs `TASK-201` and above for V12.
 - Treat FIX parsing, SBE encode/decode, gateway handoff, book mutation, order state, risk, strategy tick, and order encoding as steady-state hot paths.
 - Keep allocation-heavy work in cold/control paths: startup, config, admin, tooling, simulator, REST polling, diagnostics, and tests.
 - Keep venue-specific behavior out of FIX protocol plugins.
@@ -582,7 +607,8 @@ Normal compile/check tasks already depend on the required generation tasks.
 - Keep shared venue abstractions under `gateway/venue`.
 - Keep market books separate from own order state.
 - Add tests for positive, negative, edge, exception, and failure paths where applicable.
-- Real Coinbase QA/UAT is the final connectivity validation, not a substitute for automated tests.
+- Add allocation and determinism evidence for every changed hot path.
+- Real Coinbase QA/UAT is blocked until unit, integration, simulator, live-wire E2E, deterministic replay, and benchmark gates pass.
 
 ## Common Commands
 
@@ -649,16 +675,23 @@ Check:
 
 ## Release Readiness
 
+V12 production connectivity claims require evidence, not intent. Real Coinbase
+QA/UAT remains blocked until the automated gates in
+`config/v12-production-preflight.toml` and `scripts/v12-preflight-check.sh` pass
+and the manual operational evidence is attached to the release record.
+
 Before production:
 
-- `./gradlew check` passes.
-- Coinbase simulator tests pass.
-- Coinbase sandbox/UAT tests pass.
-- FIX session recovery and resend behavior are validated.
-- Market-data sequence gap/reconnect behavior is validated.
-- Order-entry reject/cancel/fill paths are validated.
-- Risk limits are reviewed.
-- Secrets are loaded from approved infrastructure.
-- Metrics and logs are reviewed.
-- Runbooks are written.
-- Shadow mode is completed before cutover.
+- Run `scripts/v12-preflight-check.sh` and archive unit, integration, simulator,
+  live-wire E2E, deterministic replay, JMH, and latency-report artifacts.
+- Prove secrets handling and credential rotation: credentials must come from the
+  approved secret source or injected environment, repository configs must remain
+  non-production, and rotation must be rehearsed without code changes.
+- Prove financial controls: kill switch, rejected orders, disconnect/reconnect,
+  stale market data, self-trade prevention, and balance/position/order/execution
+  reconciliation must have automated tests or signed runbook evidence.
+- Prove operations controls: monitoring dashboards, alert routing, failover,
+  disaster recovery, deployment, rollback, and shadow-mode cutover evidence must
+  exist before live trading.
+- Do not use real Coinbase QA/UAT to replace missing local evidence. QA/UAT is
+  the final external venue validation step after local proof is complete.

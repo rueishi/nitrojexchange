@@ -2,11 +2,15 @@ package ig.rueishi.nitroj.exchange.gateway.venue.coinbase;
 
 import ig.rueishi.nitroj.exchange.common.CredentialsConfig;
 import ig.rueishi.nitroj.exchange.common.RestConfig;
+import ig.rueishi.nitroj.exchange.gateway.GatewayDisruptor;
 import ig.rueishi.nitroj.exchange.messages.BalanceQueryRequestDecoder;
 import ig.rueishi.nitroj.exchange.messages.BalanceQueryRequestEncoder;
+import ig.rueishi.nitroj.exchange.messages.BalanceQueryResponseDecoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.registry.IdRegistry;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.concurrent.status.CountersManager;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -23,13 +27,16 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit coverage for TASK-014 REST balance polling.
+ * Unit coverage for REST balance polling and the V12 cold-path boundary.
  *
  * <p>Responsibility: verify Coinbase authentication, account JSON parsing,
  * unknown-currency filtering, and failure sentinel publication for
@@ -40,7 +47,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * in-memory response publisher. Lifecycle: each test enqueues one request and
  * drains exactly one poller item to mimic serialized rest-poller-thread work.
  * Design intent: keep protocol behavior deterministic without relying on
- * external Coinbase services.</p>
+ * external Coinbase services, and prove JSON/parser objects are converted into
+ * compact primitive SBE balance events before any gateway/cluster hot-path
+ * state can observe them.</p>
  */
 final class CoinbaseRestPollerTest {
     private static final int VENUE_ID = 1;
@@ -88,6 +97,25 @@ final class CoinbaseRestPollerTest {
         harness.poller.drainOnceForTest();
 
         assertThat(harness.published).containsExactly(new Published(VENUE_ID, BTC_ID, -1L, 999L));
+    }
+
+    @Test
+    void transportFailure_retriedOnceBeforeSuccess() {
+        final AtomicInteger attempts = new AtomicInteger();
+        final Harness harness = new Harness(request -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new IOException("temporary timeout");
+            }
+            return new StringResponse(request, 200, """
+                [{"currency":"BTC","available":"1.25"}]
+                """);
+        });
+
+        harness.poller.onBalanceQueryRequest(requestDecoder(BTC_ID));
+        harness.poller.drainOnceForTest();
+
+        assertThat(attempts).hasValue(2);
+        assertThat(harness.published).containsExactly(new Published(VENUE_ID, BTC_ID, 125_000_000L, 999L));
     }
 
     /** Verifies non-200 HTTP status publishes the -1 failure sentinel. */
@@ -188,6 +216,33 @@ final class CoinbaseRestPollerTest {
         assertThat(harness.published).extracting(Published::instrumentId).containsExactly(BTC_ID, ETH_ID);
     }
 
+    @Test
+    void responsePublisher_convertsRestDtoToCompactSbeEvent() throws Exception {
+        final List<UnsafeBuffer> captured = new ArrayList<>();
+        final CountDownLatch consumed = new CountDownLatch(1);
+        try (GatewayDisruptor disruptor = new GatewayDisruptor(8, 512, counters(), (slot, sequence, endOfBatch) -> {
+            final byte[] copy = new byte[slot.length];
+            slot.buffer.getBytes(0, copy);
+            captured.add(new UnsafeBuffer(copy));
+            consumed.countDown();
+        })) {
+            disruptor.start();
+            final CoinbaseRestPoller.DisruptorResponsePublisher publisher =
+                new CoinbaseRestPoller.DisruptorResponsePublisher(disruptor);
+
+            publisher.publish(VENUE_ID, BTC_ID, 125_000_000L, 999L);
+
+            assertThat(consumed.await(2, TimeUnit.SECONDS)).isTrue();
+        }
+
+        final BalanceQueryResponseDecoder decoder = new BalanceQueryResponseDecoder();
+        decoder.wrapAndApplyHeader(captured.getFirst(), 0, new MessageHeaderDecoder());
+        assertThat(decoder.venueId()).isEqualTo(VENUE_ID);
+        assertThat(decoder.instrumentId()).isEqualTo(BTC_ID);
+        assertThat(decoder.balanceScaled()).isEqualTo(125_000_000L);
+        assertThat(decoder.queryTimestampNanos()).isEqualTo(999L);
+    }
+
     static BalanceQueryRequestDecoder requestDecoder(final int instrumentId) {
         final UnsafeBuffer buffer = new UnsafeBuffer(new byte[128]);
         final BalanceQueryRequestEncoder encoder = new BalanceQueryRequestEncoder();
@@ -206,6 +261,10 @@ final class CoinbaseRestPollerTest {
 
     static RestConfig restConfig(final String baseUrl, final int timeoutMs) {
         return RestConfig.builder().baseUrl(baseUrl).pollIntervalMs(5).timeoutMs(timeoutMs).build();
+    }
+
+    static CountersManager counters() {
+        return new CountersManager(new UnsafeBuffer(new byte[1024 * 1024]), new UnsafeBuffer(new byte[64 * 1024]));
     }
 
     static String expectedSignature(final String prehash) throws Exception {

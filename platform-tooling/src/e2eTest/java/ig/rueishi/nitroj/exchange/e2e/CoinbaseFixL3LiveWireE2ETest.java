@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Coinbase L3 live-wire E2E coverage using the local FIX simulator endpoint.
  *
- * <p>Responsibility: validates the L3/order-level side of the V11 pre-QA/UAT
+ * <p>Responsibility: validates the L3/order-level side of the V12 pre-QA/UAT
  * gate. The test subscribes to the simulator over a socket FIX session, feeds
  * the resulting Coinbase-style order-level FIX bytes through the gateway L3
  * normalizer and cluster L3/L2 harness, sends an order back over the same FIX
@@ -53,6 +53,11 @@ final class CoinbaseFixL3LiveWireE2ETest {
             assertThat(harness.bestAsk(venueId, Ids.INSTRUMENT_BTC_USD)).isEqualTo(scale(65_001.00));
             assertThat(harness.consolidatedBook(Ids.INSTRUMENT_BTC_USD).sizeAt(
                 EntryType.ASK, scale(65_001.00))).isEqualTo(scale(1.0));
+            assertThat(harness.gatewayDisruptorHandoffCount()).isEqualTo(2);
+            assertThat(harness.aeronIngressPublicationCount()).isEqualTo(2);
+            assertThat(harness.observeStrategyBestBid(venueId, Ids.INSTRUMENT_BTC_USD))
+                .isEqualTo("STRATEGY_BEST_BID:" + scale(65_000.00));
+            assertThat(harness.strategyObservationCount()).isEqualTo(1);
 
             final var changed = harness.simulator().emitL3ChangeOrder("WIRE-BID-1", "BUY", "BTC-USD", 65_000.00, 0.25);
             assertThat(harness.applyCoinbaseL3FixMessage(harness.simulator().l3FixMessages().get(

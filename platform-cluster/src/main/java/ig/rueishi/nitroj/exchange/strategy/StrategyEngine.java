@@ -7,7 +7,6 @@ import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import io.aeron.cluster.service.Cluster;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -25,7 +24,7 @@ import java.util.Objects;
  * scheduled timer.</p>
  */
 public final class StrategyEngine implements TradingClusteredService.StrategyLifecycle {
-    private final List<Strategy> strategies = new ArrayList<>(4);
+    private final ArrayList<Strategy> strategies = new ArrayList<>(4);
     private final StrategyContext baseContext;
     private StrategyContext effectiveContext;
     private Cluster cluster;
@@ -73,8 +72,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
     public void setCluster(final Cluster cluster) {
         this.cluster = cluster;
         this.effectiveContext = contextWithCluster(cluster);
-        for (Strategy strategy : strategies) {
-            strategy.init(effectiveContext);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).init(effectiveContext);
         }
     }
 
@@ -91,12 +90,12 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
         }
         this.active = active;
         if (!active) {
-            for (Strategy strategy : strategies) {
-                strategy.onKillSwitch();
+            for (int i = 0, size = strategies.size(); i < size; i++) {
+                strategies.get(i).onKillSwitch();
             }
         } else {
-            for (Strategy strategy : strategies) {
-                strategy.onKillSwitchCleared();
+            for (int i = 0, size = strategies.size(); i < size; i++) {
+                strategies.get(i).onKillSwitchCleared();
             }
         }
     }
@@ -108,9 +107,12 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void pauseStrategy(final int strategyId) {
-        strategies.stream()
-            .filter(strategy -> strategy.strategyId() == strategyId)
-            .forEach(Strategy::onKillSwitch);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            final Strategy strategy = strategies.get(i);
+            if (strategy.strategyId() == strategyId) {
+                strategy.onKillSwitch();
+            }
+        }
     }
 
     /**
@@ -120,9 +122,12 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void resumeStrategy(final int strategyId) {
-        strategies.stream()
-            .filter(strategy -> strategy.strategyId() == strategyId)
-            .forEach(Strategy::onKillSwitchCleared);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            final Strategy strategy = strategies.get(i);
+            if (strategy.strategyId() == strategyId) {
+                strategy.onKillSwitchCleared();
+            }
+        }
     }
 
     /**
@@ -135,8 +140,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
         if (!active) {
             return;
         }
-        for (Strategy strategy : strategies) {
-            strategy.onMarketData(decoder);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).onMarketData(decoder);
         }
     }
 
@@ -151,9 +156,9 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
         if (!active) {
             return;
         }
-        for (Strategy strategy : strategies) {
+        for (int i = 0, size = strategies.size(); i < size; i++) {
             if (isFill) {
-                strategy.onFill(decoder);
+                strategies.get(i).onFill(decoder);
             }
         }
     }
@@ -165,8 +170,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void onTimer(final long correlationId) {
-        for (Strategy strategy : strategies) {
-            strategy.onTimer(correlationId);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).onTimer(correlationId);
         }
     }
 
@@ -176,8 +181,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      * @param venueId recovered venue id
      */
     public void onVenueRecovered(final int venueId) {
-        for (Strategy strategy : strategies) {
-            strategy.onVenueRecovered(venueId);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).onVenueRecovered(venueId);
         }
     }
 
@@ -195,8 +200,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
         final long netQtyScaled,
         final long avgEntryScaled
     ) {
-        for (Strategy strategy : strategies) {
-            strategy.onPositionUpdate(venueId, instrumentId, netQtyScaled, avgEntryScaled);
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).onPositionUpdate(venueId, instrumentId, netQtyScaled, avgEntryScaled);
         }
     }
 
@@ -205,8 +210,8 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void resetAll() {
-        for (Strategy strategy : strategies) {
-            strategy.shutdown();
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).shutdown();
         }
         active = false;
         cluster = null;

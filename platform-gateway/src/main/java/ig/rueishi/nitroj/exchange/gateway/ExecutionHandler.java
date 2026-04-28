@@ -1,5 +1,6 @@
 package ig.rueishi.nitroj.exchange.gateway;
 
+import ig.rueishi.nitroj.exchange.common.BoundedTextIdentity;
 import ig.rueishi.nitroj.exchange.messages.BooleanType;
 import ig.rueishi.nitroj.exchange.messages.ExecType;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventEncoder;
@@ -13,8 +14,6 @@ import uk.co.real_logic.artio.library.SessionHandler;
 import uk.co.real_logic.artio.messages.DisconnectReason;
 import uk.co.real_logic.artio.session.Session;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Objects;
 
 /**
@@ -43,6 +42,7 @@ public final class ExecutionHandler implements SessionHandler {
     private final GatewayDisruptor disruptor;
     private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
     private final ExecutionEventEncoder executionEncoder = new ExecutionEventEncoder();
+    private final ExecutionScan scan = new ExecutionScan();
 
     /**
      * Creates an ExecutionReport handler.
@@ -122,7 +122,7 @@ public final class ExecutionHandler implements SessionHandler {
         final int offset,
         final int length) {
 
-        final ExecutionScan scan = new ExecutionScan();
+        scan.reset();
         scan.ingressNanos = ingressNanos;
         scan.venueId = idRegistry.venueId(sessionId);
 
@@ -141,11 +141,16 @@ public final class ExecutionHandler implements SessionHandler {
             while (valueEnd < end && buffer.getByte(valueEnd) != SOH) {
                 valueEnd++;
             }
-            scan.accept(buffer, parsePositiveInt(buffer, tagStart, equals), equals + 1, valueEnd);
+            final int tag = parsePositiveInt(buffer, tagStart, equals);
+            if (tag < 0) {
+                scan.malformed = true;
+                break;
+            }
+            scan.accept(buffer, tag, equals + 1, valueEnd);
             cursor = valueEnd + 1;
         }
 
-        if (!scan.executionReport) {
+        if (!scan.executionReport || scan.malformed) {
             return Action.CONTINUE;
         }
         publish(scan, buffer);
@@ -153,7 +158,10 @@ public final class ExecutionHandler implements SessionHandler {
     }
 
     private void publish(final ExecutionScan scan, final DirectBuffer sourceBuffer) {
-        scan.instrumentId = idRegistry.instrumentId(scan.symbol);
+        if (!scan.validForPublish()) {
+            return;
+        }
+        scan.instrumentId = idRegistry.instrumentId(scan.symbolBuffer, scan.symbolStart, scan.symbolLength);
         if (scan.instrumentId == 0) {
             return;
         }
@@ -221,22 +229,39 @@ public final class ExecutionHandler implements SessionHandler {
     }
 
     private static int parsePositiveInt(final DirectBuffer buffer, final int start, final int end) {
+        if (start >= end) {
+            return -1;
+        }
         int value = 0;
         for (int i = start; i < end; i++) {
-            value = (value * 10) + (buffer.getByte(i) - '0');
+            final byte b = buffer.getByte(i);
+            if (b < '0' || b > '9') {
+                return -1;
+            }
+            value = (value * 10) + (b - '0');
         }
         return value;
     }
 
     private static long parsePositiveLong(final DirectBuffer buffer, final int start, final int end) {
+        if (start >= end) {
+            return -1L;
+        }
         long value = 0;
         for (int i = start; i < end; i++) {
-            value = (value * 10) + (buffer.getByte(i) - '0');
+            final byte b = buffer.getByte(i);
+            if (b < '0' || b > '9') {
+                return -1L;
+            }
+            value = (value * 10) + (b - '0');
         }
         return value;
     }
 
     private static long parseScaled(final DirectBuffer buffer, final int start, final int end) {
+        if (start >= end) {
+            return -1L;
+        }
         long whole = 0;
         long fraction = 0;
         int fractionDigits = 0;
@@ -244,11 +269,20 @@ public final class ExecutionHandler implements SessionHandler {
         for (int i = start; i < end; i++) {
             final byte b = buffer.getByte(i);
             if (b == '.') {
+                if (afterDecimal) {
+                    return -1L;
+                }
                 afterDecimal = true;
             } else if (afterDecimal && fractionDigits < 8) {
+                if (b < '0' || b > '9') {
+                    return -1L;
+                }
                 fraction = (fraction * 10) + (b - '0');
                 fractionDigits++;
             } else if (!afterDecimal) {
+                if (b < '0' || b > '9') {
+                    return -1L;
+                }
                 whole = (whole * 10) + (b - '0');
             }
         }
@@ -260,8 +294,11 @@ public final class ExecutionHandler implements SessionHandler {
     }
 
     private static long parseFixTimestampNanos(final DirectBuffer buffer, final int start, final int end) {
-        if (start >= end) {
-            return 0L;
+        if (end - start < 17
+            || buffer.getByte(start + 8) != '-'
+            || buffer.getByte(start + 11) != ':'
+            || buffer.getByte(start + 14) != ':') {
+            return -1L;
         }
         final int year = parsePositiveInt(buffer, start, start + 4);
         final int month = parsePositiveInt(buffer, start + 4, start + 6);
@@ -269,27 +306,58 @@ public final class ExecutionHandler implements SessionHandler {
         final int hour = parsePositiveInt(buffer, start + 9, start + 11);
         final int minute = parsePositiveInt(buffer, start + 12, start + 14);
         final int second = parsePositiveInt(buffer, start + 15, start + 17);
+        if (year < 0 || month < 1 || month > 12 || day < 1 || day > 31
+            || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 60) {
+            return -1L;
+        }
         int nanos = 0;
         int digits = 0;
         for (int i = start + 18; i < end && digits < 9; i++) {
-            nanos = (nanos * 10) + (buffer.getByte(i) - '0');
+            final byte b = buffer.getByte(i);
+            if (b < '0' || b > '9') {
+                return -1L;
+            }
+            nanos = (nanos * 10) + (b - '0');
             digits++;
         }
         while (digits < 9) {
             nanos *= 10;
             digits++;
         }
-        return (LocalDateTime.of(year, month, day, hour, minute, second)
-            .toEpochSecond(ZoneOffset.UTC) * 1_000_000_000L) + nanos;
+        final long epochDay = epochDay(year, month, day);
+        return ((((epochDay * 24L) + hour) * 60L + minute) * 60L + second) * 1_000_000_000L + nanos;
+    }
+
+    private static long epochDay(final int year, final int month, final int day) {
+        long y = year;
+        long m = month;
+        long total = 365L * y;
+        if (y >= 0) {
+            total += (y + 3L) / 4L - (y + 99L) / 100L + (y + 399L) / 400L;
+        } else {
+            total -= y / -4L - y / -100L + y / -400L;
+        }
+        total += ((367L * m - 362L) / 12L) + day - 1L;
+        if (m > 2L) {
+            total -= isLeapYear(year) ? 1L : 2L;
+        }
+        return total - 719_528L;
+    }
+
+    private static boolean isLeapYear(final int year) {
+        return (year & 3) == 0 && (year % 100 != 0 || year % 400 == 0);
     }
 
     private static final class ExecutionScan {
         private boolean executionReport;
+        private boolean malformed;
         private long ingressNanos;
         private int venueId;
         private int instrumentId;
         private int fixSeqNum;
-        private String symbol;
+        private DirectBuffer symbolBuffer;
+        private int symbolStart;
+        private int symbolLength;
         private long clOrdId;
         private ExecType execType = ExecType.NULL_VAL;
         private Side side = Side.NULL_VAL;
@@ -305,38 +373,96 @@ public final class ExecutionHandler implements SessionHandler {
         private int execIdLength;
         private boolean isFinal;
 
+        private void reset() {
+            executionReport = false;
+            malformed = false;
+            ingressNanos = 0L;
+            venueId = 0;
+            instrumentId = 0;
+            fixSeqNum = 0;
+            symbolBuffer = null;
+            symbolStart = 0;
+            symbolLength = 0;
+            clOrdId = 0L;
+            execType = ExecType.NULL_VAL;
+            side = Side.NULL_VAL;
+            fillPriceScaled = 0L;
+            fillQtyScaled = 0L;
+            cumQtyScaled = 0L;
+            leavesQtyScaled = 0L;
+            rejectCode = 0;
+            exchangeTimestampNanos = 0L;
+            venueOrderIdStart = 0;
+            venueOrderIdLength = 0;
+            execIdStart = 0;
+            execIdLength = 0;
+            isFinal = false;
+        }
+
         private void accept(final DirectBuffer buffer, final int tag, final int valueStart, final int valueEnd) {
+            if (malformed || valueStart >= valueEnd) {
+                malformed = true;
+                return;
+            }
             switch (tag) {
                 case 35 -> executionReport = buffer.getByte(valueStart) == '8';
-                case 34 -> fixSeqNum = parsePositiveInt(buffer, valueStart, valueEnd);
-                case 11 -> clOrdId = parsePositiveLong(buffer, valueStart, valueEnd);
+                case 34 -> {
+                    fixSeqNum = parsePositiveInt(buffer, valueStart, valueEnd);
+                    malformed = fixSeqNum < 0;
+                }
+                case 11 -> {
+                    clOrdId = parsePositiveLong(buffer, valueStart, valueEnd);
+                    malformed = clOrdId < 0;
+                }
                 case 17 -> {
                     execIdStart = valueStart;
                     execIdLength = valueEnd - valueStart;
+                    malformed = !boundedIdentityLength(execIdLength);
                 }
-                case 31 -> fillPriceScaled = parseScaled(buffer, valueStart, valueEnd);
-                case 32 -> fillQtyScaled = parseScaled(buffer, valueStart, valueEnd);
+                case 31 -> {
+                    fillPriceScaled = parseScaled(buffer, valueStart, valueEnd);
+                    malformed = fillPriceScaled < 0;
+                }
+                case 32 -> {
+                    fillQtyScaled = parseScaled(buffer, valueStart, valueEnd);
+                    malformed = fillQtyScaled < 0;
+                }
                 case 37 -> {
                     venueOrderIdStart = valueStart;
                     venueOrderIdLength = valueEnd - valueStart;
+                    malformed = !boundedIdentityLength(venueOrderIdLength);
                 }
                 case 54 -> side = side(buffer, valueStart);
-                case 55 -> symbol = buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart);
-                case 60 -> exchangeTimestampNanos = parseFixTimestampNanos(buffer, valueStart, valueEnd);
+                case 55 -> {
+                    symbolBuffer = buffer;
+                    symbolStart = valueStart;
+                    symbolLength = valueEnd - valueStart;
+                    malformed = symbolLength <= 0;
+                }
+                case 60 -> {
+                    exchangeTimestampNanos = parseFixTimestampNanos(buffer, valueStart, valueEnd);
+                    malformed = exchangeTimestampNanos < 0;
+                }
                 case 103 -> {
                     if (execType == ExecType.REJECTED) {
                         rejectCode = parsePositiveInt(buffer, valueStart, valueEnd);
+                        malformed = rejectCode < 0;
                     }
                 }
-                case 14 -> cumQtyScaled = parseScaled(buffer, valueStart, valueEnd);
+                case 14 -> {
+                    cumQtyScaled = parseScaled(buffer, valueStart, valueEnd);
+                    malformed = cumQtyScaled < 0;
+                }
                 case 150 -> {
                     execType = mapExecType((char)buffer.getByte(valueStart));
+                    malformed = execType == ExecType.NULL_VAL;
                     if (execType != ExecType.REJECTED) {
                         rejectCode = 0;
                     }
                 }
                 case 151 -> {
                     leavesQtyScaled = parseScaled(buffer, valueStart, valueEnd);
+                    malformed = leavesQtyScaled < 0;
                     isFinal = terminal(execType, leavesQtyScaled);
                 }
                 default -> { }
@@ -344,6 +470,19 @@ public final class ExecutionHandler implements SessionHandler {
             if (tag == 150 || tag == 151) {
                 isFinal = terminal(execType, leavesQtyScaled);
             }
+        }
+
+        private boolean validForPublish() {
+            return !malformed
+                && symbolBuffer != null
+                && symbolLength > 0
+                && execType != ExecType.NULL_VAL
+                && venueOrderIdLength > 0
+                && execIdLength > 0;
+        }
+
+        private static boolean boundedIdentityLength(final int length) {
+            return length > 0 && length <= BoundedTextIdentity.DEFAULT_MAX_LENGTH;
         }
     }
 }

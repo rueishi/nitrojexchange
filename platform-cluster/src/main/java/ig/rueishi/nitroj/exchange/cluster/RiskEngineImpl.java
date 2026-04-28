@@ -86,6 +86,9 @@ public final class RiskEngineImpl implements RiskEngine {
         final long qtyScaled,
         final int strategyId
     ) {
+        // Decision order is part of the reject-code contract: callers can rely
+        // on the returned singleton and its primitive code being deterministic
+        // for the first breached boundary on the hot path.
         if (recoveryLocks[venueId]) {
             return reject(RiskDecision.REJECT_RECOVERY, venueId, instrumentId, 0L, 0L);
         }

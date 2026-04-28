@@ -43,7 +43,7 @@ public final class MarketDataHandler implements SessionHandler {
      *
      * @param idRegistry ID lookup dependency
      * @param disruptor gateway handoff ring
-     * @param logger logger used for recoverable data-quality warnings
+     * @param logger compatibility logger retained for cold-path diagnostics
      * @param normalizer selected venue/model normalizer
      */
     public MarketDataHandler(

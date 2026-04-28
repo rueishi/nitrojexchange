@@ -16,8 +16,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Unit coverage for cross-venue L2 aggregation.
  *
  * <p>Responsibility: verifies same-price summing, per-venue contribution
- * removal, zero-size updates, best bid/ask recalculation, empty-book sentinels,
- * and integration with {@link InternalMarketView}. Role in system: protects the
+ * removal, zero-size updates, best bid/ask recalculation, capacity-full
+ * behavior, invalid sides, deterministic queries, empty-book sentinels, and
+ * integration with {@link InternalMarketView}. Role in system: protects the
  * optional consolidated market view used for fair-price, hedging, and arbitrage
  * decisions. Relationships: uses real generated MarketDataEvent codecs so the
  * InternalMarketView path matches production dispatch. Lifecycle: runs in the
@@ -82,6 +83,48 @@ final class ConsolidatedL2BookTest {
         assertThat(book.sizeAt(EntryType.BID, 100L)).isEqualTo(10L);
         assertThat(book.sizeAt(EntryType.BID, 101L)).isZero();
         assertThat(book.bestBid()).isEqualTo(100L);
+    }
+
+    @Test
+    void capacityFull_existingContributionCanStillUpdateAndDelete() {
+        final ConsolidatedL2Book book = new ConsolidatedL2Book(Ids.INSTRUMENT_BTC_USD, 1);
+
+        book.applyVenueLevel(1, EntryType.BID, 100L, 10L);
+        book.applyVenueLevel(1, EntryType.BID, 100L, 12L);
+        book.applyVenueLevel(1, EntryType.BID, 100L, 0L);
+
+        assertThat(book.sizeAt(EntryType.BID, 100L)).isZero();
+        assertThat(book.bestBid()).isEqualTo(Ids.INVALID_PRICE);
+    }
+
+    @Test
+    void invalidSide_ignoredWithoutMutatingBook() {
+        final ConsolidatedL2Book book = new ConsolidatedL2Book(Ids.INSTRUMENT_BTC_USD);
+
+        book.applyVenueLevel(1, EntryType.NULL_VAL, 100L, 10L);
+
+        assertThat(book.sizeAt(EntryType.BID, 100L)).isZero();
+        assertThat(book.bestBid()).isEqualTo(Ids.INVALID_PRICE);
+        assertThat(book.sizeAt(EntryType.NULL_VAL, 100L)).isZero();
+    }
+
+    @Test
+    void deterministicQueryBehavior_independentOfInsertionOrder() {
+        final ConsolidatedL2Book first = new ConsolidatedL2Book(Ids.INSTRUMENT_BTC_USD);
+        final ConsolidatedL2Book second = new ConsolidatedL2Book(Ids.INSTRUMENT_BTC_USD);
+
+        first.applyVenueLevel(1, EntryType.BID, 100L, 10L);
+        first.applyVenueLevel(2, EntryType.BID, 101L, 5L);
+        first.applyVenueLevel(1, EntryType.ASK, 105L, 7L);
+        first.applyVenueLevel(2, EntryType.ASK, 104L, 8L);
+        second.applyVenueLevel(2, EntryType.ASK, 104L, 8L);
+        second.applyVenueLevel(1, EntryType.ASK, 105L, 7L);
+        second.applyVenueLevel(2, EntryType.BID, 101L, 5L);
+        second.applyVenueLevel(1, EntryType.BID, 100L, 10L);
+
+        assertThat(first.bestBid()).isEqualTo(second.bestBid()).isEqualTo(101L);
+        assertThat(first.bestAsk()).isEqualTo(second.bestAsk()).isEqualTo(104L);
+        assertThat(first.sizeAt(EntryType.BID, 100L)).isEqualTo(second.sizeAt(EntryType.BID, 100L));
     }
 
     @Test

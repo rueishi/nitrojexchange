@@ -15,11 +15,7 @@ import ig.rueishi.nitroj.exchange.fix.fixt11.fix50sp2.builder.OrderCancelRequest
 import ig.rueishi.nitroj.exchange.fix.fixt11.fix50sp2.builder.OrderStatusRequestEncoder;
 import uk.co.real_logic.artio.builder.Encoder;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.concurrent.locks.LockSupport;
 
@@ -36,15 +32,25 @@ import java.util.concurrent.locks.LockSupport;
  * metrics and rejection publication. Lifecycle: one adapter is created for an
  * acquired session and reused on the gateway egress thread. Design intent:
  * preserve Coinbase's current FIX 5.0SP2 order-entry behavior while creating
- * the V11 extension seam for future FIX versions and venue policies.
+ * the V11 extension seam for future FIX versions and venue policies. V12 keeps
+ * outbound encoding allocation-free after warmup by reusing ASCII scratch
+ * buffers for numeric IDs, venue order IDs, symbols, and timestamps; the
+ * generated Artio encoders keep references to those buffers only until the
+ * synchronous send attempt finishes.
  */
 public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
     public static final int MAX_SEND_ATTEMPTS = 3;
     public static final long BACK_PRESSURE_SLEEP_NANOS = 1_000L;
     private static final int DECIMAL_SCALE = 8;
+    private static final int MAX_LONG_ASCII_LENGTH = 20;
+    private static final int MAX_SYMBOL_BYTES = 64;
+    private static final int MAX_VENUE_ORDER_ID_BYTES = 64;
+    private static final int FIX_TIMESTAMP_LENGTH = 21;
+    private static final long MILLIS_PER_DAY = 86_400_000L;
+    private static final long MILLIS_PER_HOUR = 3_600_000L;
+    private static final long MILLIS_PER_MINUTE = 60_000L;
+    private static final long MILLIS_PER_SECOND = 1_000L;
     private static final byte[] EMPTY_BYTES = new byte[0];
-    private static final DateTimeFormatter FIX_TIMESTAMP =
-        DateTimeFormatter.ofPattern("yyyyMMdd-HH:mm:ss.SSS");
 
     private final ExecutionRouterImpl.FixSender sender;
     private final IdRegistry idRegistry;
@@ -57,6 +63,11 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
     private final OrderCancelRequestEncoder cancelEncoder = new OrderCancelRequestEncoder();
     private final OrderCancelReplaceRequestEncoder replaceEncoder = new OrderCancelReplaceRequestEncoder();
     private final OrderStatusRequestEncoder statusEncoder = new OrderStatusRequestEncoder();
+    private final byte[] primaryIdBytes = new byte[MAX_LONG_ASCII_LENGTH];
+    private final byte[] secondaryIdBytes = new byte[MAX_LONG_ASCII_LENGTH];
+    private final byte[] symbolBytes = new byte[MAX_SYMBOL_BYTES];
+    private final byte[] timestampBytes = new byte[FIX_TIMESTAMP_LENGTH];
+    private final byte[] venueOrderIdBytes = new byte[MAX_VENUE_ORDER_ID_BYTES];
 
     public StandardOrderEntryAdapter(
         final ExecutionRouterImpl.FixSender sender,
@@ -79,11 +90,11 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
     public void sendNewOrder(final NewOrderCommandDecoder command) {
         newOrderEncoder.resetMessage();
         newOrderEncoder.account(account);
-        newOrderEncoder.clOrdID(Long.toString(command.clOrdId()));
+        newOrderEncoder.clOrdID(primaryIdBytes, 0, putUnsignedLongAscii(command.clOrdId(), primaryIdBytes));
         newOrderEncoder.handlInst('1');
-        newOrderEncoder.symbol(symbol(command.instrumentId()));
+        newOrderEncoder.symbol(symbolBytes, 0, copySymbol(command.instrumentId()));
         newOrderEncoder.side(fixSide(command.side()));
-        newOrderEncoder.transactTime(timestampBytes());
+        newOrderEncoder.transactTime(timestampBytes, 0, formatTimestamp());
         newOrderEncoder.orderQty(command.qtyScaled(), DECIMAL_SCALE);
         newOrderEncoder.ordType(fixOrdType(command.ordType()));
         if (command.ordType() == OrdType.LIMIT) {
@@ -98,12 +109,12 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
     @Override
     public void sendCancel(final CancelOrderCommandDecoder command) {
         cancelEncoder.resetMessage();
-        cancelEncoder.origClOrdID(Long.toString(command.origClOrdId()));
+        cancelEncoder.origClOrdID(primaryIdBytes, 0, putUnsignedLongAscii(command.origClOrdId(), primaryIdBytes));
         copyVenueOrderId(command, cancelEncoder);
-        cancelEncoder.clOrdID(Long.toString(command.cancelClOrdId()));
-        cancelEncoder.symbol(symbol(command.instrumentId()));
+        cancelEncoder.clOrdID(secondaryIdBytes, 0, putUnsignedLongAscii(command.cancelClOrdId(), secondaryIdBytes));
+        cancelEncoder.symbol(symbolBytes, 0, copySymbol(command.instrumentId()));
         cancelEncoder.side(fixSide(command.side()));
-        cancelEncoder.transactTime(timestampBytes());
+        cancelEncoder.transactTime(timestampBytes, 0, formatTimestamp());
         cancelEncoder.orderQty(command.originalQtyScaled(), DECIMAL_SCALE);
         policy.enrichCancel(command, cancelEncoder);
 
@@ -118,12 +129,12 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
 
         replaceEncoder.resetMessage();
         copyVenueOrderId(command, replaceEncoder);
-        replaceEncoder.origClOrdID(Long.toString(command.origClOrdId()));
-        replaceEncoder.clOrdID(Long.toString(command.newClOrdId()));
+        replaceEncoder.origClOrdID(primaryIdBytes, 0, putUnsignedLongAscii(command.origClOrdId(), primaryIdBytes));
+        replaceEncoder.clOrdID(secondaryIdBytes, 0, putUnsignedLongAscii(command.newClOrdId(), secondaryIdBytes));
         replaceEncoder.handlInst('1');
-        replaceEncoder.symbol(symbol(command.instrumentId()));
+        replaceEncoder.symbol(symbolBytes, 0, copySymbol(command.instrumentId()));
         replaceEncoder.side(fixSide(command.side()));
-        replaceEncoder.transactTime(timestampBytes());
+        replaceEncoder.transactTime(timestampBytes, 0, formatTimestamp());
         replaceEncoder.orderQty(command.newQtyScaled(), DECIMAL_SCALE);
         replaceEncoder.ordType('2');
         replaceEncoder.price(command.newPriceScaled(), DECIMAL_SCALE);
@@ -136,9 +147,9 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
     @Override
     public void sendStatusQuery(final OrderStatusQueryCommandDecoder command) {
         statusEncoder.resetMessage();
-        statusEncoder.clOrdID(Long.toString(command.clOrdId()));
+        statusEncoder.clOrdID(primaryIdBytes, 0, putUnsignedLongAscii(command.clOrdId(), primaryIdBytes));
         copyVenueOrderId(command, statusEncoder);
-        statusEncoder.symbol(symbol(command.instrumentId()));
+        statusEncoder.symbol(symbolBytes, 0, copySymbol(command.instrumentId()));
         statusEncoder.side(fixSide(command.side()));
         policy.enrichStatusQuery(command, statusEncoder);
 
@@ -159,17 +170,24 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
         return false;
     }
 
-    private String symbol(final int instrumentId) {
+    private int copySymbol(final int instrumentId) {
         final String symbol = idRegistry.symbolOf(instrumentId);
         if (symbol == null) {
             throw new IllegalArgumentException("Unknown instrumentId: " + instrumentId);
         }
-        return symbol;
+        final int length = symbol.length();
+        if (length > symbolBytes.length) {
+            throw new IllegalArgumentException("FIX symbol too long for reusable buffer: " + symbol);
+        }
+        for (int i = 0; i < length; i++) {
+            symbolBytes[i] = (byte)symbol.charAt(i);
+        }
+        return length;
     }
 
-    private byte[] timestampBytes() {
-        return FIX_TIMESTAMP.format(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))
-            .getBytes(StandardCharsets.US_ASCII);
+    private int formatTimestamp() {
+        formatUtcMillis(clock.millis(), timestampBytes);
+        return FIX_TIMESTAMP_LENGTH;
     }
 
     private static char fixSide(final Side side) {
@@ -190,42 +208,136 @@ public final class StandardOrderEntryAdapter implements VenueOrderEntryAdapter {
         };
     }
 
-    private static void copyVenueOrderId(
+    private void copyVenueOrderId(
         final CancelOrderCommandDecoder command,
         final OrderCancelRequestEncoder encoder) {
-        final int length = command.venueOrderIdLength();
+        final int length = copyVenueOrderId(command);
         if (length == 0) {
             encoder.orderID(EMPTY_BYTES);
             return;
         }
-        final byte[] orderId = new byte[length];
-        command.getVenueOrderId(orderId, 0, length);
-        encoder.orderID(orderId);
+        encoder.orderID(venueOrderIdBytes, 0, length);
     }
 
-    private static void copyVenueOrderId(
+    private void copyVenueOrderId(
         final ReplaceOrderCommandDecoder command,
         final OrderCancelReplaceRequestEncoder encoder) {
-        final int length = command.venueOrderIdLength();
+        final int length = copyVenueOrderId(command);
         if (length == 0) {
             encoder.orderID(EMPTY_BYTES);
             return;
         }
-        final byte[] orderId = new byte[length];
-        command.getVenueOrderId(orderId, 0, length);
-        encoder.orderID(orderId);
+        encoder.orderID(venueOrderIdBytes, 0, length);
     }
 
-    private static void copyVenueOrderId(
+    private void copyVenueOrderId(
         final OrderStatusQueryCommandDecoder command,
         final OrderStatusRequestEncoder encoder) {
-        final int length = command.venueOrderIdLength();
+        final int length = copyVenueOrderId(command);
         if (length == 0) {
             encoder.orderID(EMPTY_BYTES);
             return;
         }
-        final byte[] orderId = new byte[length];
-        command.getVenueOrderId(orderId, 0, length);
-        encoder.orderID(orderId);
+        encoder.orderID(venueOrderIdBytes, 0, length);
+    }
+
+    private int copyVenueOrderId(final CancelOrderCommandDecoder command) {
+        final int length = command.venueOrderIdLength();
+        ensureVenueOrderIdFits(length);
+        command.getVenueOrderId(venueOrderIdBytes, 0, length);
+        return length;
+    }
+
+    private int copyVenueOrderId(final ReplaceOrderCommandDecoder command) {
+        final int length = command.venueOrderIdLength();
+        ensureVenueOrderIdFits(length);
+        command.getVenueOrderId(venueOrderIdBytes, 0, length);
+        return length;
+    }
+
+    private int copyVenueOrderId(final OrderStatusQueryCommandDecoder command) {
+        final int length = command.venueOrderIdLength();
+        ensureVenueOrderIdFits(length);
+        command.getVenueOrderId(venueOrderIdBytes, 0, length);
+        return length;
+    }
+
+    private static void ensureVenueOrderIdFits(final int length) {
+        if (length > MAX_VENUE_ORDER_ID_BYTES) {
+            throw new IllegalArgumentException("venue order ID too long for reusable buffer: " + length);
+        }
+    }
+
+    private static int putUnsignedLongAscii(final long value, final byte[] target) {
+        if (value < 0) {
+            throw new IllegalArgumentException("FIX numeric ID must be non-negative: " + value);
+        }
+        long remaining = value;
+        int length = 0;
+        do {
+            target[length++] = (byte)('0' + (remaining % 10));
+            remaining /= 10;
+        } while (remaining != 0);
+
+        for (int left = 0, right = length - 1; left < right; left++, right--) {
+            final byte swap = target[left];
+            target[left] = target[right];
+            target[right] = swap;
+        }
+        return length;
+    }
+
+    private static void formatUtcMillis(final long epochMillis, final byte[] target) {
+        final long epochDay = Math.floorDiv(epochMillis, MILLIS_PER_DAY);
+        int millisOfDay = (int)Math.floorMod(epochMillis, MILLIS_PER_DAY);
+        final long z = epochDay + 719_468L;
+        final long era = Math.floorDiv(z, 146_097L);
+        final long doe = z - era * 146_097L;
+        final long yoe = (doe - doe / 1_460L + doe / 36_524L - doe / 146_096L) / 365L;
+        int year = (int)(yoe + era * 400L);
+        final long doy = doe - (365L * yoe + yoe / 4L - yoe / 100L);
+        final long mp = (5L * doy + 2L) / 153L;
+        final int day = (int)(doy - (153L * mp + 2L) / 5L + 1L);
+        final int month = (int)(mp + (mp < 10L ? 3L : -9L));
+        if (month <= 2) {
+            year++;
+        }
+
+        final int hour = (int)(millisOfDay / MILLIS_PER_HOUR);
+        millisOfDay -= hour * (int)MILLIS_PER_HOUR;
+        final int minute = (int)(millisOfDay / MILLIS_PER_MINUTE);
+        millisOfDay -= minute * (int)MILLIS_PER_MINUTE;
+        final int second = (int)(millisOfDay / MILLIS_PER_SECOND);
+        final int millis = millisOfDay - second * (int)MILLIS_PER_SECOND;
+
+        put4(target, 0, year);
+        put2(target, 4, month);
+        put2(target, 6, day);
+        target[8] = '-';
+        put2(target, 9, hour);
+        target[11] = ':';
+        put2(target, 12, minute);
+        target[14] = ':';
+        put2(target, 15, second);
+        target[17] = '.';
+        put3(target, 18, millis);
+    }
+
+    private static void put4(final byte[] target, final int offset, final int value) {
+        target[offset] = (byte)('0' + value / 1_000 % 10);
+        target[offset + 1] = (byte)('0' + value / 100 % 10);
+        target[offset + 2] = (byte)('0' + value / 10 % 10);
+        target[offset + 3] = (byte)('0' + value % 10);
+    }
+
+    private static void put3(final byte[] target, final int offset, final int value) {
+        target[offset] = (byte)('0' + value / 100 % 10);
+        target[offset + 1] = (byte)('0' + value / 10 % 10);
+        target[offset + 2] = (byte)('0' + value % 10);
+    }
+
+    private static void put2(final byte[] target, final int offset, final int value) {
+        target[offset] = (byte)('0' + value / 10 % 10);
+        target[offset + 1] = (byte)('0' + value % 10);
     }
 }

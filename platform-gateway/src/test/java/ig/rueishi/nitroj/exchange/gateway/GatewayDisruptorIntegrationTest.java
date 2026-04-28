@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration coverage for TASK-007 gateway Disruptor handoff.
@@ -130,6 +131,37 @@ final class GatewayDisruptorIntegrationTest {
 
             assertThat(disruptor.claimSlot()).isNull();
             assertThat(disruptor.disruptorFullCount()).isEqualTo(1);
+        }
+    }
+
+    /**
+     * Verifies producer errors cannot publish null or already-reset slots.
+     */
+    @Test
+    void invalidPublish_rejectedBeforeRingCursorMoves() {
+        try (GatewayDisruptor disruptor = new GatewayDisruptor(4, 512, counters(), (slot, seq, end) -> { })) {
+            assertThatThrownBy(() -> disruptor.publishSlot(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("slot must be claimed");
+            assertThatThrownBy(() -> disruptor.publishSlot(new GatewaySlot()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("slot must be claimed");
+            assertThat(disruptor.disruptorFullCount()).isZero();
+        }
+    }
+
+    /**
+     * Verifies the Aeron back-pressure counter remains under explicit publisher
+     * ownership and is independent from ring-full accounting.
+     */
+    @Test
+    void aeronBackPressureCounter_incrementedIndependentlyFromRingFullCounter() {
+        try (GatewayDisruptor disruptor = new GatewayDisruptor(4, 512, counters(), (slot, seq, end) -> { })) {
+            disruptor.incrementAeronBackPressureCounter();
+            disruptor.incrementAeronBackPressureCounter();
+
+            assertThat(disruptor.aeronBackPressureCount()).isEqualTo(2);
+            assertThat(disruptor.disruptorFullCount()).isZero();
         }
     }
 

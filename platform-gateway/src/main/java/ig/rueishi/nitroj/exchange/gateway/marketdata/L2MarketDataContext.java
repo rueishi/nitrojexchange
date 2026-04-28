@@ -2,6 +2,7 @@ package ig.rueishi.nitroj.exchange.gateway.marketdata;
 
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
+import org.agrona.DirectBuffer;
 
 /**
  * Mutable context for one normalized L2 market-data entry.
@@ -22,6 +23,9 @@ public final class L2MarketDataContext {
     public int instrumentId;
     public int fixSeqNum;
     public String symbol;
+    public DirectBuffer symbolBuffer;
+    public int symbolOffset;
+    public int symbolLength;
     public EntryType entryType = EntryType.NULL_VAL;
     public UpdateAction updateAction = UpdateAction.NEW;
     public long priceScaled;
@@ -35,11 +39,24 @@ public final class L2MarketDataContext {
     public void clearEntry() {
         instrumentId = 0;
         symbol = null;
+        symbolBuffer = null;
+        symbolOffset = 0;
+        symbolLength = 0;
         entryType = EntryType.NULL_VAL;
         updateAction = UpdateAction.NEW;
         priceScaled = 0L;
         sizeScaled = 0L;
         priceLevel = 0;
         exchangeTimestampNanos = 0L;
+    }
+
+    public void setSymbolRange(final DirectBuffer buffer, final int offset, final int length) {
+        symbolBuffer = buffer;
+        symbolOffset = offset;
+        symbolLength = length;
+    }
+
+    public boolean hasSymbolRange() {
+        return symbolBuffer != null && symbolLength > 0;
     }
 }

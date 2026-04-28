@@ -56,6 +56,16 @@ final class ArbStrategyTest {
     }
 
     @Test
+    void metadataAccess_returnsCachedArrays() {
+        final Harness harness = harness(config(1, 0L));
+
+        assertThat(harness.strategy.subscribedInstrumentIds()).isSameAs(harness.strategy.subscribedInstrumentIds());
+        assertThat(harness.strategy.activeVenueIds()).isSameAs(harness.strategy.activeVenueIds());
+        assertThat(harness.strategy.subscribedInstrumentIds()).containsExactly(Ids.INSTRUMENT_BTC_USD);
+        assertThat(harness.strategy.activeVenueIds()).containsExactly(Ids.VENUE_COINBASE, Ids.VENUE_COINBASE_SANDBOX);
+    }
+
+    @Test
     void opportunityDetection_sufficientSpread_tradeExecuted() {
         final Harness harness = harness(config(1, 0L));
         seedOpportunity(harness);

@@ -17,10 +17,13 @@ import java.lang.foreign.Arena;
  * derived L2 levels here. Relationships: {@link MarketDataEventDecoder} supplies
  * normalized updates, {@link L2OrderBook} owns per-book off-heap storage, and
  * {@link Ids#INVALID_PRICE} is returned for missing books. Lifecycle: a cluster
- * node constructs one market view during service startup; books are created
- * lazily as market data arrives. Design intent: use a primitive packed key to
- * avoid tuple allocation and keep the strategy read path cheap while keeping
- * order-level L3 state separate.</p>
+ * node constructs one market view during service startup. V12 startup wiring
+ * must call {@link #preallocateMarketState(int[], int[])} with the configured
+ * venue and instrument universe before live traffic is admitted; lazy creation
+ * remains only for tests and defensive unknown-instrument handling. Design
+ * intent: use primitive packed keys and startup allocation so the first live
+ * market-data tick for a configured book does not allocate book or overlay
+ * state while keeping order-level L3 state separate.</p>
  */
 public final class InternalMarketView {
     private static final Arena BOOK_ARENA = Arena.ofShared();
@@ -29,6 +32,38 @@ public final class InternalMarketView {
     private final Long2ObjectHashMap<ConsolidatedL2Book> consolidatedBooks = new Long2ObjectHashMap<>();
     private final OwnOrderOverlay ownOrderOverlay = new OwnOrderOverlay();
     private final ExternalLiquidityView externalLiquidityView = new ExternalLiquidityView(this, ownOrderOverlay);
+
+    public InternalMarketView() {
+    }
+
+    public InternalMarketView(final int[] venueIds, final int[] instrumentIds) {
+        preallocateMarketState(venueIds, instrumentIds);
+    }
+
+    /**
+     * Allocates all configured per-venue and consolidated books during startup.
+     *
+     * <p>Callers should invoke this after config/registry loading and before live
+     * gateway traffic can enter the cluster. The method is idempotent for already
+     * allocated books and intentionally rejects non-positive configured IDs so a
+     * bad registry cannot silently create unreachable hot-path state.</p>
+     *
+     * @param venueIds configured venue IDs
+     * @param instrumentIds configured instrument IDs
+     */
+    public void preallocateMarketState(final int[] venueIds, final int[] instrumentIds) {
+        if (venueIds == null || instrumentIds == null) {
+            throw new NullPointerException("venueIds and instrumentIds are required");
+        }
+        for (int instrumentId : instrumentIds) {
+            validateId("instrumentId", instrumentId);
+            consolidatedBook(instrumentId);
+            for (int venueId : venueIds) {
+                validateId("venueId", venueId);
+                book(venueId, instrumentId);
+            }
+        }
+    }
 
     /**
      * Applies a market-data event to its corresponding book, creating the book on first update.
@@ -83,6 +118,14 @@ public final class InternalMarketView {
         return books.get(packKey(venueId, instrumentId));
     }
 
+    public int bookCount() {
+        return books.size();
+    }
+
+    public int consolidatedBookCount() {
+        return consolidatedBooks.size();
+    }
+
     public OwnOrderOverlay ownOrderOverlay() {
         return ownOrderOverlay;
     }
@@ -122,5 +165,11 @@ public final class InternalMarketView {
 
     static long packKey(final int venueId, final int instrumentId) {
         return ((long)venueId << 32) | (instrumentId & 0xffff_ffffL);
+    }
+
+    private static void validateId(final String name, final int value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(name + " must be positive: " + value);
+        }
     }
 }

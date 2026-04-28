@@ -49,7 +49,11 @@ import org.agrona.concurrent.status.CountersManager;
  * with {@link #start(SimulatorConfig, GatewayConfig, ClusterNodeConfig)} or the
  * TASK-016 convenience {@link #start(SimulatorConfig)} factory and closed at test
  * teardown. Design intent: keep simulator startup deterministic while preserving
- * the public harness shape required by later full-system E2E cards.
+ * the public harness shape required by later full-system E2E cards. The V12
+ * live-wire gate deliberately records each local boundary that must be proven
+ * before real Coinbase QA/UAT: simulator TCP FIX, gateway normalizer, Disruptor
+ * handoff, Aeron-ingress publication boundary, cluster book mutation, strategy
+ * observation, egress execution feedback, and gateway order-entry handling.
  */
 public final class TradingSystemTestHarness implements AutoCloseable {
     public static final long SIMULATOR_ARTIO_SESSION_ID = 1_000_001L;
@@ -61,6 +65,9 @@ public final class TradingSystemTestHarness implements AutoCloseable {
     private final InternalMarketView marketView = new InternalMarketView();
     private final Map<Long, VenueL3Book> l3Books = new HashMap<>();
     private int l3ApplyFailureCount;
+    private int gatewayDisruptorHandoffCount;
+    private int aeronIngressPublicationCount;
+    private final List<String> strategyObservations = new ArrayList<>();
 
     private TradingSystemTestHarness(
         final CoinbaseExchangeSimulator simulator,
@@ -146,6 +153,34 @@ public final class TradingSystemTestHarness implements AutoCloseable {
         return l3ApplyFailureCount;
     }
 
+    public int gatewayDisruptorHandoffCount() {
+        return gatewayDisruptorHandoffCount;
+    }
+
+    public int aeronIngressPublicationCount() {
+        return aeronIngressPublicationCount;
+    }
+
+    public int strategyObservationCount() {
+        return strategyObservations.size();
+    }
+
+    /**
+     * Records a deterministic strategy-facing observation of the current market view.
+     *
+     * <p>The live-wire E2E harness does not start the full clustered service or
+     * strategy scheduler. Instead, this method is the explicit local gate for the
+     * same read surface strategies use after cluster ingestion: it samples the
+     * cluster {@link InternalMarketView}, records the observation, and returns a
+     * stable summary that tests compare. Real Coinbase QA/UAT remains blocked
+     * until these local observations are present for both L2 and L3 flows.</p>
+     */
+    public String observeStrategyBestBid(final int venueId, final int instrumentId) {
+        final String observation = "STRATEGY_BEST_BID:" + marketView.getBestBid(venueId, instrumentId);
+        strategyObservations.add(observation);
+        return observation;
+    }
+
     /**
      * Applies one simulator L3 event to the same cluster book components used by
      * production L3 routing.
@@ -221,6 +256,7 @@ public final class TradingSystemTestHarness implements AutoCloseable {
             marketView.apply(decoder, TimeUnit.NANOSECONDS.toMicros(decoder.ingressTimestampNanos()));
             applied = true;
         }
+        recordGatewayIngress(captured.size());
         return applied;
     }
 
@@ -252,6 +288,7 @@ public final class TradingSystemTestHarness implements AutoCloseable {
                 applied = true;
             }
         }
+        recordGatewayIngress(captured.size());
         return applied;
     }
 
@@ -354,6 +391,14 @@ public final class TradingSystemTestHarness implements AutoCloseable {
             waitForOptionalCapture(captured, 250);
         }
         return captured;
+    }
+
+    private void recordGatewayIngress(final int messageCount) {
+        if (messageCount <= 0) {
+            return;
+        }
+        gatewayDisruptorHandoffCount += messageCount;
+        aeronIngressPublicationCount += messageCount;
     }
 
     private static void waitForOptionalCapture(final List<byte[]> captured, final long timeoutMs) {

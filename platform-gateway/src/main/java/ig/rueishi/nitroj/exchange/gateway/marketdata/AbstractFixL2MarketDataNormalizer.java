@@ -22,6 +22,9 @@ import org.agrona.DirectBuffer;
 public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNormalizer {
     protected static final byte SOH = 1;
     protected static final long SCALE = 100_000_000L;
+    private final FixScan scan = new FixScan();
+    private long unknownSymbolDropCount;
+    private long malformedMessageDropCount;
 
     @Override
     public Action onFixMessage(
@@ -32,9 +35,7 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
         final long ingressNanos) {
 
         try {
-            final FixScan scan = new FixScan();
-            scan.context.ingressNanos = ingressNanos;
-            scan.context.venueId = venueId(sessionId);
+            scan.reset(ingressNanos, venueId(sessionId));
 
             final int end = offset + length;
             int cursor = offset;
@@ -99,21 +100,38 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
     protected abstract boolean publish(L2MarketDataContext context);
 
     /**
-     * Callback for unknown symbols. Implementations usually log and drop.
+     * Callback for unknown symbols. Implementations increment a counter and drop.
      *
      * @param symbol FIX symbol
      */
     protected void onUnknownSymbol(final String symbol) {
-        // Default normalizers silently drop unknown symbols.
+        unknownSymbolDropCount++;
+    }
+
+    protected void onUnknownSymbol(final DirectBuffer buffer, final int valueStart, final int valueEnd) {
+        unknownSymbolDropCount++;
     }
 
     /**
-     * Callback for malformed FIX messages. Implementations usually log and drop.
+     * Callback for malformed FIX messages. Implementations increment a counter
+     * and drop without logging on the hot path.
      *
      * @param ex parse failure
      */
     protected void onMalformedMessage(final RuntimeException ex) {
-        // Default normalizers fail safely by dropping malformed messages.
+        malformedMessageDropCount++;
+    }
+
+    protected void onMalformedMessage() {
+        malformedMessageDropCount++;
+    }
+
+    public long unknownSymbolDropCount() {
+        return unknownSymbolDropCount;
+    }
+
+    public long malformedMessageDropCount() {
+        return malformedMessageDropCount;
     }
 
     /**
@@ -174,11 +192,27 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
 
     private final class FixScan {
         private final L2MarketDataContext context = new L2MarketDataContext();
-        private String messageSymbol;
+        private DirectBuffer messageSymbolBuffer;
+        private int messageSymbolStart;
+        private int messageSymbolEnd;
         private int messageInstrumentId;
         private boolean marketData;
         private boolean hasEntry;
         private UpdateAction pendingUpdateAction = UpdateAction.NEW;
+
+        private void reset(final long ingressNanos, final int venueId) {
+            context.clearEntry();
+            context.ingressNanos = ingressNanos;
+            context.venueId = venueId;
+            context.fixSeqNum = 0;
+            messageSymbolBuffer = null;
+            messageSymbolStart = 0;
+            messageSymbolEnd = 0;
+            messageInstrumentId = 0;
+            marketData = false;
+            hasEntry = false;
+            pendingUpdateAction = UpdateAction.NEW;
+        }
 
         private void accept(
             final DirectBuffer buffer,
@@ -190,13 +224,14 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
                 case 35 -> marketData = isMarketDataMessage(buffer.getByte(valueStart));
                 case 34 -> context.fixSeqNum = parsePositiveInt(buffer, valueStart, valueEnd);
                 case 55 -> {
-                    final String decodedSymbol = buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart);
                     final int decodedInstrumentId = instrumentId(buffer, valueStart, valueEnd);
                     if (hasEntry) {
-                        context.symbol = decodedSymbol;
+                        context.setSymbolRange(buffer, valueStart, valueEnd - valueStart);
                         context.instrumentId = decodedInstrumentId;
                     } else {
-                        messageSymbol = decodedSymbol;
+                        messageSymbolBuffer = buffer;
+                        messageSymbolStart = valueStart;
+                        messageSymbolEnd = valueEnd;
                         messageInstrumentId = decodedInstrumentId;
                     }
                 }
@@ -204,7 +239,9 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
                     finish();
                     hasEntry = true;
                     context.clearEntry();
-                    context.symbol = messageSymbol;
+                    if (messageSymbolBuffer != null) {
+                        context.setSymbolRange(messageSymbolBuffer, messageSymbolStart, messageSymbolEnd - messageSymbolStart);
+                    }
                     context.instrumentId = messageInstrumentId;
                     context.entryType = mapEntryType(buffer.getByte(valueStart));
                     context.updateAction = pendingUpdateAction;
@@ -229,12 +266,12 @@ public abstract class AbstractFixL2MarketDataNormalizer implements MarketDataNor
         }
 
         private void finish() {
-            if (!marketData || !hasEntry || context.entryType == EntryType.NULL_VAL || context.symbol == null) {
+            if (!marketData || !hasEntry || context.entryType == EntryType.NULL_VAL || !context.hasSymbolRange()) {
                 hasEntry = false;
                 return;
             }
             if (context.instrumentId == 0) {
-                onUnknownSymbol(context.symbol);
+                onUnknownSymbol(context.symbolBuffer, context.symbolOffset, context.symbolOffset + context.symbolLength);
                 hasEntry = false;
                 return;
             }

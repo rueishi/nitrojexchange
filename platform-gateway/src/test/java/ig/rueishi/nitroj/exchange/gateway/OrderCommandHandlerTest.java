@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit coverage for TASK-013 order-command routing.
@@ -136,6 +137,23 @@ final class OrderCommandHandlerTest {
         assertThat(harness.sender.sent).isEmpty();
     }
 
+    /** Verifies venues that support native replace emit FIX MsgType G with reusable ID buffers. */
+    @Test
+    void replaceCommand_nativeVenue_routesCancelReplaceRequest() {
+        final Harness harness = new Harness(true);
+
+        harness.router.routeReplace(replaceDecoder(1001L, 1003L, "venue-1"));
+
+        assertThat(harness.sender.sent).hasSize(1);
+        assertThat(harness.sender.sent.getFirst())
+            .contains(tag("35=G"))
+            .contains(tag("11=1003"))
+            .contains(tag("41=1001"))
+            .contains(tag("37=venue-1"))
+            .contains(tag("55=BTC-USD"))
+            .contains(tag("60=20260424-20:30:15.123"));
+    }
+
     /** Verifies OrderStatusQueryCommand becomes FIX MsgType H. */
     @Test
     void orderStatusQueryCommand_sends35H() {
@@ -148,6 +166,34 @@ final class OrderCommandHandlerTest {
             .contains(tag("35=H"))
             .contains(tag("11=1001"))
             .contains(tag("37=venue-1"));
+    }
+
+    /** Verifies UTC timestamp formatting across a date boundary without String formatting allocation. */
+    @Test
+    void newOrderCommand_timestampFormatting_handlesUtcDayBoundary() {
+        final Harness harness = new Harness(
+            Clock.fixed(Instant.parse("2026-12-31T23:59:59.999Z"), ZoneOffset.UTC),
+            new TestRegistry(),
+            false);
+
+        harness.router.routeNewOrder(newOrderDecoder(1007L, OrdType.LIMIT));
+
+        assertThat(harness.sender.sent.getFirst())
+            .contains(tag("60=20261231-23:59:59.999"));
+    }
+
+    /** Verifies symbol lookup failure rejects unknown instrument IDs before FIX send. */
+    @Test
+    void newOrderCommand_unknownInstrument_failsBeforeSend() {
+        final Harness harness = new Harness(
+            Clock.fixed(Instant.parse("2026-04-24T20:30:15.123Z"), ZoneOffset.UTC),
+            new MissingSymbolRegistry(),
+            false);
+
+        assertThatThrownBy(() -> harness.router.routeNewOrder(newOrderDecoder(1008L, OrdType.LIMIT)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Unknown instrumentId");
+        assertThat(harness.sender.sent).isEmpty();
     }
 
     /** Verifies BalanceQueryRequest is dispatched to the REST poller hook rather than FIX. */
@@ -395,15 +441,34 @@ final class OrderCommandHandlerTest {
         final ExecutionRouterImpl router;
 
         Harness(final long... results) {
+            this(Clock.fixed(Instant.parse("2026-04-24T20:30:15.123Z"), ZoneOffset.UTC), new TestRegistry(), false, results);
+        }
+
+        Harness(final boolean nativeReplaceSupported) {
+            this(
+                Clock.fixed(Instant.parse("2026-04-24T20:30:15.123Z"), ZoneOffset.UTC),
+                new TestRegistry(),
+                nativeReplaceSupported);
+        }
+
+        Harness(final Clock clock, final IdRegistry idRegistry, final boolean nativeReplaceSupported) {
+            this(clock, idRegistry, nativeReplaceSupported, 42L);
+        }
+
+        Harness(
+            final Clock clock,
+            final IdRegistry idRegistry,
+            final boolean nativeReplaceSupported,
+            final long... results) {
             sender = new CapturingSender(results.length == 0 ? new long[] {42L} : results);
             router = new ExecutionRouterImpl(
                 sender,
-                new TestRegistry(),
+                idRegistry,
                 "ACC1",
                 backPressureCount::incrementAndGet,
                 (clOrdId, venueId, instrumentId) -> rejects.add(clOrdId + ":" + venueId + ":" + instrumentId),
-                Clock.fixed(Instant.parse("2026-04-24T20:30:15.123Z"), ZoneOffset.UTC),
-                false);
+                clock,
+                nativeReplaceSupported);
         }
     }
 
@@ -450,6 +515,32 @@ final class OrderCommandHandlerTest {
         @Override
         public String symbolOf(final int instrumentId) {
             return symbols.get(instrumentId);
+        }
+
+        @Override
+        public String venueNameOf(final int venueId) {
+            return "coinbase";
+        }
+
+        @Override
+        public void registerSession(final int venueId, final long sessionId) {
+        }
+    }
+
+    private static final class MissingSymbolRegistry implements IdRegistry {
+        @Override
+        public int venueId(final long sessionId) {
+            return VENUE_ID;
+        }
+
+        @Override
+        public int instrumentId(final CharSequence symbol) {
+            return 0;
+        }
+
+        @Override
+        public String symbolOf(final int instrumentId) {
+            return null;
         }
 
         @Override

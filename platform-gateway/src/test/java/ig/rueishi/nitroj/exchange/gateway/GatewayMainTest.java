@@ -75,6 +75,26 @@ final class GatewayMainTest {
     }
 
     @Test
+    void withResolvedCredentials_rotatedEnvironmentValues_changeWithoutCodeOrConfigEdit() {
+        final GatewayConfig config = missingCredentialConfig();
+
+        final GatewayConfig first = GatewayMain.withResolvedCredentials(config, venue(), Map.of(
+            "COINBASE_API_KEY", "env-key-v1",
+            "COINBASE_API_SECRET_BASE64", "ZW52LXNlY3JldC12MQ==",
+            "COINBASE_API_PASSPHRASE", "env-pass-v1"));
+        final GatewayConfig rotated = GatewayMain.withResolvedCredentials(config, venue(), Map.of(
+            "COINBASE_API_KEY", "env-key-v2",
+            "COINBASE_API_SECRET_BASE64", "ZW52LXNlY3JldC12Mg==",
+            "COINBASE_API_PASSPHRASE", "env-pass-v2"));
+
+        assertThat(first.credentials().apiKey()).isEqualTo("env-key-v1");
+        assertThat(rotated.credentials().apiKey()).isEqualTo("env-key-v2");
+        assertThat(rotated.credentials().secretBase64()).isEqualTo("ZW52LXNlY3JldC12Mg==");
+        assertThat(rotated.credentials().passphrase()).isEqualTo("env-pass-v2");
+        assertThat(rotated.credentials().vaultPath()).isEqualTo(first.credentials().vaultPath());
+    }
+
+    @Test
     void buildSessionConfig_usesVenueSelectedFixProtocolDictionary() {
         final GatewayConfig config = GatewayConfig.forTest();
         final SessionConfiguration session = GatewayMain.buildSessionConfig(

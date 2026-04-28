@@ -1,6 +1,9 @@
 package ig.rueishi.nitroj.exchange.order;
 
 import ig.rueishi.nitroj.exchange.common.OrderStatus;
+import ig.rueishi.nitroj.exchange.common.BoundedTextIdentity;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * Mutable in-memory representation of one live order in the cluster service.
@@ -10,14 +13,17 @@ import ig.rueishi.nitroj.exchange.common.OrderStatus;
  * execution reports, snapshotting, and recovery actions. Keeping the state flat
  * avoids per-order allocations and makes pool reuse cheap and explicit.</p>
  *
- * <p>The only reference field is {@link #venueOrderId}. It is populated after the
- * venue acknowledges an order and is nulled on every reset so a reused state object
- * cannot leak a previous order's venue identity.</p>
+ * <p>Venue order identity is stored as bounded ASCII bytes inside the state
+ * object. Hot order transitions copy decoder bytes into this reusable storage
+ * instead of constructing {@link String} or byte-array objects. The
+ * {@link #venueOrderId()} accessor is a cold/test convenience that materializes
+ * a string only for assertions, diagnostics, and compatibility boundaries.</p>
  */
 public final class OrderState {
     long clOrdId;
     long venueClOrdId;
-    String venueOrderId;
+    final byte[] venueOrderIdBytes = new byte[BoundedTextIdentity.DEFAULT_MAX_LENGTH];
+    int venueOrderIdLength;
     int venueId;
     int instrumentId;
     int strategyId;
@@ -49,7 +55,7 @@ public final class OrderState {
     public void reset() {
         clOrdId = 0L;
         venueClOrdId = 0L;
-        venueOrderId = null;
+        venueOrderIdLength = 0;
         venueId = 0;
         instrumentId = 0;
         strategyId = 0;
@@ -76,7 +82,7 @@ public final class OrderState {
     }
 
     public String venueOrderId() {
-        return venueOrderId;
+        return venueOrderIdLength == 0 ? null : new String(venueOrderIdBytes, 0, venueOrderIdLength, StandardCharsets.US_ASCII);
     }
 
     public int venueId() {

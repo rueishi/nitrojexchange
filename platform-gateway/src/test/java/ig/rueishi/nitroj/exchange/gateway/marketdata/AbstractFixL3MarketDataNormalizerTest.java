@@ -103,10 +103,14 @@ final class AbstractFixL3MarketDataNormalizerTest {
             "269=0", "278=o1", "270=100", "271=2"), 0, currentLength, 10L);
         normalizer.onFixMessage(77L, fix("35=W", "34=1", "55=BTC-USD", "268=1",
             "269=2", "278=o1", "270=100", "271=2"), 0, currentLength, 10L);
+        normalizer.onFixMessage(77L, fix("35=W", "34=1", "55=BTC-USD", "268=1",
+            "269=0", "278=" + "A".repeat(65), "270=100", "271=2"), 0, currentLength, 10L);
 
         assertThat(normalizer.published).isEmpty();
-        assertThat(normalizer.malformedCount).isEqualTo(2);
+        assertThat(normalizer.malformedCount).isEqualTo(3);
         assertThat(normalizer.unknownSymbols).containsExactly("ETH-USD");
+        assertThat(normalizer.unknownSymbolDropCount()).isEqualTo(1);
+        assertThat(normalizer.malformedMessageDropCount()).isEqualTo(3);
     }
 
     private static int currentLength;
@@ -151,24 +155,52 @@ final class AbstractFixL3MarketDataNormalizerTest {
             copy.instrumentId = context.instrumentId;
             copy.fixSeqNum = context.fixSeqNum;
             copy.symbol = context.symbol;
+            copy.setSymbolRange(context.symbolBuffer, context.symbolOffset, context.symbolLength);
             copy.side = context.side;
             copy.updateAction = context.updateAction;
             copy.priceScaled = context.priceScaled;
             copy.sizeScaled = context.sizeScaled;
             copy.exchangeTimestampNanos = context.exchangeTimestampNanos;
-            copy.mdEntryId = context.mdEntryId;
-            copy.mdEntryRefId = context.mdEntryRefId;
+            if (context.hasMdEntryIdRange()) {
+                copy.setMdEntryIdRange(context.mdEntryIdBuffer, context.mdEntryIdOffset, context.mdEntryIdLength);
+                copy.mdEntryId = context.mdEntryIdBuffer.getStringWithoutLengthAscii(
+                    context.mdEntryIdOffset, context.mdEntryIdLength);
+            } else {
+                copy.mdEntryId = context.mdEntryId;
+            }
+            if (context.mdEntryRefIdBuffer != null) {
+                copy.setMdEntryRefIdRange(context.mdEntryRefIdBuffer, context.mdEntryRefIdOffset,
+                    context.mdEntryRefIdLength);
+                copy.mdEntryRefId = context.mdEntryRefIdBuffer.getStringWithoutLengthAscii(
+                    context.mdEntryRefIdOffset, context.mdEntryRefIdLength);
+            } else {
+                copy.mdEntryRefId = context.mdEntryRefId;
+            }
             published.add(copy);
             return true;
         }
 
         @Override
         protected void onUnknownSymbol(final String symbol) {
+            super.onUnknownSymbol(symbol);
             unknownSymbols.add(symbol);
         }
 
         @Override
+        protected void onUnknownSymbol(final DirectBuffer buffer, final int valueStart, final int valueEnd) {
+            super.onUnknownSymbol(buffer, valueStart, valueEnd);
+            unknownSymbols.add(buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart));
+        }
+
+        @Override
         protected void onMalformedMessage(final RuntimeException ex) {
+            super.onMalformedMessage(ex);
+            malformedCount++;
+        }
+
+        @Override
+        protected void onMalformedMessage() {
+            super.onMalformedMessage();
             malformedCount++;
         }
     }

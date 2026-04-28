@@ -2,6 +2,7 @@ package ig.rueishi.nitroj.exchange.benchmark;
 
 import ig.rueishi.nitroj.exchange.gateway.marketdata.AbstractFixL2MarketDataNormalizer;
 import ig.rueishi.nitroj.exchange.gateway.marketdata.L2MarketDataContext;
+import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -9,6 +10,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -24,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 @Fork(1)
 @State(Scope.Thread)
 public class FixL2NormalizerBenchmark {
+    private static final int OPS = 65_536;
+
     private BenchmarkL2Normalizer normalizer;
     private UnsafeBuffer validMessage;
     private UnsafeBuffer unsupportedMessage;
@@ -41,14 +45,20 @@ public class FixL2NormalizerBenchmark {
     }
 
     @Benchmark
+    @OperationsPerInvocation(OPS)
     public int validL2SnapshotParse() {
-        normalizer.onFixMessage(1L, validMessage, 0, validLength, 1L);
+        for (int i = 0; i < OPS; i++) {
+            normalizer.onFixMessage(1L, validMessage, 0, validLength, 1L);
+        }
         return normalizer.publishCount;
     }
 
     @Benchmark
+    @OperationsPerInvocation(OPS)
     public int ignoredUnsupportedMessage() {
-        normalizer.onFixMessage(1L, unsupportedMessage, 0, unsupportedLength, 1L);
+        for (int i = 0; i < OPS; i++) {
+            normalizer.onFixMessage(1L, unsupportedMessage, 0, unsupportedLength, 1L);
+        }
         return normalizer.publishCount;
     }
 
@@ -67,6 +77,17 @@ public class FixL2NormalizerBenchmark {
         @Override
         protected int instrumentId(final String symbol) {
             return "BTC-USD".equals(symbol) ? 1 : 0;
+        }
+
+        @Override
+        protected int instrumentId(final DirectBuffer buffer, final int valueStart, final int valueEnd) {
+            return valueEnd - valueStart == 7
+                && buffer.getByte(valueStart) == 'B'
+                && buffer.getByte(valueStart + 1) == 'T'
+                && buffer.getByte(valueStart + 2) == 'C'
+                && buffer.getByte(valueStart + 4) == 'U'
+                && buffer.getByte(valueStart + 5) == 'S'
+                && buffer.getByte(valueStart + 6) == 'D' ? 1 : 0;
         }
 
         @Override

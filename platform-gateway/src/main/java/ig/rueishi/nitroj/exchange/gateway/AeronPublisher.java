@@ -24,7 +24,9 @@ import java.util.Objects;
  * slots are reset in a {@code finally} block so failures never leave stale
  * lengths or sequence numbers in reusable ring entries. Design intent: fills are
  * never dropped; all other traffic is lossy under sustained Aeron back-pressure
- * after a 10 microsecond spin budget.</p>
+ * after a 10 microsecond spin budget. The supplied counter callback is only
+ * invoked for lossy drops, so monitoring distinguishes actual dropped ingress
+ * from temporary fill-path spinning.</p>
  */
 public final class AeronPublisher implements EventHandler<GatewaySlot> {
     static final long NON_FILL_SPIN_BUDGET_NANOS = 10_000L;

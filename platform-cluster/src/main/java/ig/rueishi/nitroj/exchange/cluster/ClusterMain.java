@@ -103,7 +103,7 @@ public final class ClusterMain {
         final IdRegistryImpl idRegistry = new IdRegistryImpl();
         idRegistry.init(venues, instruments);
 
-        final InternalMarketView marketView = new InternalMarketView();
+        final InternalMarketView marketView = new InternalMarketView(venueIds(venues), instrumentIds(instruments));
         final RiskEngineImpl riskEngine = new RiskEngineImpl(config.risk());
         final OrderManagerImpl orderManager = new OrderManagerImpl();
         final PortfolioEngineImpl portfolio = new PortfolioEngineImpl(riskEngine);
@@ -207,6 +207,14 @@ public final class ClusterMain {
         Files.createDirectories(Path.of(config.archiveDir()));
         Files.createDirectories(Path.of(config.snapshotDir()));
         Files.createDirectories(Path.of(config.counterFileDir()));
+    }
+
+    private static int[] venueIds(final List<VenueConfig> venues) {
+        return venues.stream().mapToInt(VenueConfig::id).toArray();
+    }
+
+    private static int[] instrumentIds(final List<InstrumentConfig> instruments) {
+        return instruments.stream().mapToInt(InstrumentConfig::id).toArray();
     }
 
     private static String memberEndpoints(final String clusterMembers, final int nodeId) {

@@ -37,9 +37,11 @@ public final class ArbStrategy implements Strategy {
     private static final byte LEG_PENDING = 0;
     private static final byte LEG_DONE = 1;
     private static final int COMMAND_BUFFER_BYTES = 1024;
+    private static final byte[] EMPTY_VENUE_ORDER_ID = new byte[0];
 
     private final ArbStrategyConfig config;
     private final int[] venueIds;
+    private final int[] subscribedInstrumentIds;
     private final long[] takerFeeScaled;
     private final long[] baseSlippageBps;
     private final long[] slippageSlopeBps;
@@ -72,6 +74,7 @@ public final class ArbStrategy implements Strategy {
         this.takerFeeScaled = config.takerFeeScaled();
         this.baseSlippageBps = config.baseSlippageBps();
         this.slippageSlopeBps = config.slippageSlopeBps();
+        subscribedInstrumentIds = new int[] {config.instrumentId()};
     }
 
     @Override
@@ -173,8 +176,8 @@ public final class ArbStrategy implements Strategy {
     @Override public void onKillSwitchCleared() { cooldownUntilMicros = 0L; }
     @Override public void onVenueRecovered(final int venueId) { }
     @Override public void onPositionUpdate(final int venueId, final int instrumentId, final long netQtyScaled, final long avgEntryScaled) { }
-    @Override public int[] subscribedInstrumentIds() { return new int[]{config.instrumentId()}; }
-    @Override public int[] activeVenueIds() { return config.venueIds(); }
+    @Override public int[] subscribedInstrumentIds() { return subscribedInstrumentIds; }
+    @Override public int[] activeVenueIds() { return venueIds; }
     @Override public void shutdown() { resetArbState(); }
     @Override public int strategyId() { return Ids.STRATEGY_ARB; }
 
@@ -250,7 +253,6 @@ public final class ArbStrategy implements Strategy {
     }
 
     private void submitCancel(final long origClOrdId, final int venueId, final Side side) {
-        final byte[] emptyVenueOrderId = new byte[0];
         cancelOrderEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
             .cancelClOrdId(cluster.logPosition())
             .origClOrdId(origClOrdId)
@@ -258,7 +260,7 @@ public final class ArbStrategy implements Strategy {
             .instrumentId(config.instrumentId())
             .side(side)
             .originalQtyScaled(config.referenceSize())
-            .putVenueOrderId(emptyVenueOrderId, 0, 0);
+            .putVenueOrderId(EMPTY_VENUE_ORDER_ID, 0, 0);
         cluster.offer(egressBuffer, 0, MessageHeaderEncoder.ENCODED_LENGTH + cancelOrderEncoder.encodedLength());
     }
 
