@@ -1,0 +1,19 @@
+# NitroJEx admin client configuration.
+#
+# Runtime use: ConfigManager.loadAdmin() parses this for future admin CLI/client
+# startup. The command channel identifies the Aeron endpoint for operator control
+# messages. The security section keeps production HMAC material in Vault and uses
+# a nonce file to preserve replay protection across CLI invocations.
+
+[connection]
+aeronDir      = "/dev/shm/aeron"
+adminChannel  = "aeron:udp?endpoint=gateway:9099"
+adminStreamId = 9099
+
+[security]
+operatorId         = 1
+hmacKeyVaultPath   = "secret/trading/admin/hmac-key"
+hmacKeyBase64Dev   = "REPLACE_WITH_BASE64_KEY_FOR_DEV_ONLY"
+nonceFile          = "./state/admin-nonce.dat"
+allowedOperatorIds = [1, 2, 3]
+# newHmacKeyVaultPath = ""

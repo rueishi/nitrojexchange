@@ -1,0 +1,51 @@
+# NitroJEx gateway process configuration for Coinbase venue ID 1.
+#
+# Runtime use: ConfigManager.loadGateway() parses these sections before GatewayMain
+# creates Artio, Aeron, REST polling, Disruptor, metrics, and warmup components.
+# Production secrets must stay outside this file; [credentials] stores a Vault
+# path only.
+
+[process]
+venueId     = 1
+nodeRole    = "gateway"
+aeronDir    = "/dev/shm/aeron"
+logDir      = "./log/gateway-1"
+
+[cluster]
+ingressChannel  = "aeron:udp?endpoint=localhost:9010"
+egressChannel   = "aeron:udp?endpoint=localhost:20000"
+members = [
+    "aeron:udp?endpoint=localhost:9010",
+    "aeron:udp?endpoint=localhost:9020",
+    "aeron:udp?endpoint=localhost:9030",
+]
+
+[fix]
+senderCompId        = "YOUR_SENDER_COMP_ID"
+targetCompId        = "Coinbase"
+heartbeatIntervalS  = 30
+reconnectIntervalMs = 5000
+resetSeqNumOnLogon  = false
+artioLogDir         = "./artio-store/venue-1"
+artioReplayCapacity = 4096
+
+[credentials]
+vaultPath = "secret/trading/coinbase/venue-1"
+
+[rest]
+baseUrl        = "https://api.exchange.coinbase.com"
+pollIntervalMs = 1000
+timeoutMs      = 5000
+
+[cpu]
+artioLibraryThread     = 2
+gatewayDisruptorThread = 3
+gatewayEgressThread    = 4
+
+[disruptor]
+ringBufferSize = 4096
+slotSizeBytes  = 512
+
+[metrics]
+counterFileDir    = "/dev/shm/metrics/gateway-1"
+histogramOutputMs = 5000

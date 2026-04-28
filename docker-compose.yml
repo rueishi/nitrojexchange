@@ -1,0 +1,53 @@
+# Single-host development topology for the NitroJEx scaffold.
+#
+# TASK-001 establishes the container/service shape only:
+# - one external Aeron MediaDriver
+# - one gateway process targeting Coinbase sandbox
+# - three cluster nodes for local Raft topology validation
+# Real images, config mounts, and command lines are added by later task cards.
+
+services:
+  media-driver:
+    image: trading-platform-media-driver:latest
+    network_mode: host
+    ipc: host
+
+  gateway-coinbase:
+    image: trading-platform-gateway:latest
+    depends_on:
+      - media-driver
+    network_mode: host
+    ipc: host
+    environment:
+      VENUE: COINBASE_SANDBOX
+      AERON_DIR: /dev/shm/aeron
+
+  cluster-node-0:
+    image: trading-platform-cluster:latest
+    depends_on:
+      - media-driver
+    network_mode: host
+    ipc: host
+    environment:
+      NODE_ID: 0
+      CLUSTER_MEMBERS: "localhost:9010,localhost:9020,localhost:9030"
+
+  cluster-node-1:
+    image: trading-platform-cluster:latest
+    depends_on:
+      - media-driver
+    network_mode: host
+    ipc: host
+    environment:
+      NODE_ID: 1
+      CLUSTER_MEMBERS: "localhost:9010,localhost:9020,localhost:9030"
+
+  cluster-node-2:
+    image: trading-platform-cluster:latest
+    depends_on:
+      - media-driver
+    network_mode: host
+    ipc: host
+    environment:
+      NODE_ID: 2
+      CLUSTER_MEMBERS: "localhost:9010,localhost:9020,localhost:9030"

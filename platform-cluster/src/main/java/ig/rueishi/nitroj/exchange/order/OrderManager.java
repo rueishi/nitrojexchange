@@ -1,0 +1,48 @@
+package ig.rueishi.nitroj.exchange.order;
+
+import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
+import io.aeron.ExclusivePublication;
+import io.aeron.Image;
+import io.aeron.cluster.service.Cluster;
+
+/**
+ * Cluster-side owner of order lifecycle state.
+ *
+ * <p>The message router calls this interface after receiving normalized
+ * {@link ExecutionEventDecoder} messages from the gateway. Implementations own
+ * the live-order map, state-machine transitions, duplicate execution detection,
+ * cancel fan-out, and archive snapshot integration. The boolean returned from
+ * {@link #onExecution(ExecutionEventDecoder)} tells the router whether downstream
+ * portfolio and risk fill handling must run.</p>
+ */
+public interface OrderManager {
+    void createPendingOrder(
+        long clOrdId,
+        int venueId,
+        int instrumentId,
+        byte side,
+        byte ordType,
+        byte timeInForce,
+        long priceScaled,
+        long qtyScaled,
+        int strategyId
+    );
+
+    boolean onExecution(ExecutionEventDecoder decoder);
+
+    void cancelAllOrders();
+
+    long[] getLiveOrderIds(int venueId);
+
+    OrderState getOrder(long clOrdId);
+
+    void forceTransitionToCanceled(long clOrdId);
+
+    void writeSnapshot(ExclusivePublication pub);
+
+    void loadSnapshot(Image image);
+
+    void setCluster(Cluster cluster);
+
+    void resetAll();
+}

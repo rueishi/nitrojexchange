@@ -1,0 +1,34 @@
+# NitroJEx venue registry.
+#
+# Runtime use: ConfigManager.loadVenues() reads this file at startup so ID
+# registry wiring can map immutable venue IDs to names and FIX endpoints.
+# Operational rule: IDs are permanent once assigned. Never reassign or reuse a
+# deleted ID because downstream persisted state and logs refer to these integers.
+
+[[venue]]
+id        = 1
+name      = "COINBASE"
+fixHost   = "fix.exchange.coinbase.com"
+fixPort   = 4198
+sandbox   = false
+fixPlugin = "FIXT11_FIX50SP2"
+venuePlugin = "COINBASE"
+marketDataModel = "L3"
+orderEntryEnabled = true
+marketDataEnabled = true
+nativeReplaceSupported = false
+
+[[venue]]
+id        = 2
+name      = "COINBASE_SANDBOX"
+fixHost   = "fix.sandbox.exchange.coinbase.com"
+fixPort   = 4198
+sandbox   = true
+fixPlugin = "FIXT11_FIX50SP2"
+venuePlugin = "COINBASE"
+marketDataModel = "L3"
+orderEntryEnabled = true
+marketDataEnabled = true
+nativeReplaceSupported = false
+
+# Future venues continue from id=3.

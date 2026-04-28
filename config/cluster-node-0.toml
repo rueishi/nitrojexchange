@@ -1,0 +1,82 @@
+# NitroJEx cluster node 0 configuration.
+#
+# Runtime use: ConfigManager.loadCluster() parses this file before ClusterMain
+# creates Aeron Cluster, archive/snapshot storage, risk, strategies, CPU affinity,
+# and metrics. Decimal trading limits are strings so Java can convert them with
+# fixed-point ConfigManager.parseScaled() instead of floating point.
+
+[process]
+nodeId      = 0
+nodeRole    = "cluster"
+aeronDir    = "/dev/shm/aeron"
+archiveDir  = "./archive/node-0"
+snapshotDir = "./snapshot/node-0"
+
+[cluster]
+members = """
+    0,localhost:9010,localhost:20000,localhost:30000,localhost:8010|
+    1,localhost:9020,localhost:20001,localhost:30001,localhost:8011|
+    2,localhost:9030,localhost:20002,localhost:30002,localhost:8012
+"""
+ingressChannel    = "aeron:udp?endpoint=localhost:9010"
+logChannel        = "aeron:udp?control-mode=manual|alias=log"
+archiveChannel    = "aeron:udp?endpoint=localhost:8010"
+snapshotIntervalS = 60
+
+[risk.global]
+maxOrdersPerSecond = 100
+maxDailyLossUsd    = "10000.00"
+
+[risk.instrument.1]
+maxOrderSizeBtc     = "1.0"
+maxLongPositionBtc  = "5.0"
+maxShortPositionBtc = "5.0"
+maxNotionalUsd      = "500000.00"
+softLimitPct        = 80
+
+[risk.instrument.2]
+maxOrderSizeEth     = "10.0"
+maxLongPositionEth  = "50.0"
+maxShortPositionEth = "50.0"
+maxNotionalUsd      = "200000.00"
+softLimitPct        = 80
+
+[strategy.market_making]
+enabled                             = true
+venueId                             = 1
+instrumentId                        = 1
+targetSpreadBps                     = 10
+inventorySkewFactorBps              = 5
+baseQuoteSizeBtc                    = "0.01"
+maxQuoteSizeBtc                     = "0.1"
+refreshThresholdBps                 = 2
+maxQuoteAgeMicros                   = 5000000
+marketDataStalenessThresholdMicros  = 2000000
+wideSpreadThresholdBps              = 50
+maxTolerableSpreadBps               = 200
+minQuoteSizeFractionBps             = 1000
+
+[strategy.arb]
+enabled                    = false
+venueIds                   = [1, 2]
+instrumentId               = 1
+minNetProfitBps            = 5
+maxArbPositionBtc          = "0.1"
+maxLegSubmissionGapMicros  = 1000
+legTimeoutClusterMicros    = 5000000
+takerFeeScaled             = ["0.0060", "0.0040"]
+baseSlippageBps            = [2, 3]
+slippageSlopeBps           = [1, 1]
+referenceSize              = "1.0"
+cooldownAfterFailureMicros = 10000000
+
+[cpu]
+clusterServiceThread = 5
+
+[metrics]
+counterFileDir    = "/dev/shm/metrics/cluster-0"
+histogramOutputMs = 5000
+
+[constants]
+maxVenues      = 16
+maxInstruments = 64

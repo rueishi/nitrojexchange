@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NitroJEx internal SBE schema.
+
+  TASK-002 owns the wire contract between gateway and cluster plus the snapshot
+  record definitions used by recovery. Generated encoder/decoder classes from
+  this file are consumed by almost every later task card, so template IDs,
+  field ordering, and var-data definitions must remain stable once published.
+-->
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+                   package="ig.rueishi.nitroj.exchange.messages"
+                   id="1"
+                   version="1"
+                   semanticVersion="5.2"
+                   description="Trading Platform Internal Events"
+                   byteOrder="littleEndian">
+  <types>
+    <primitive name="int8" primitiveType="int8"/>
+    <primitive name="int16" primitiveType="int16"/>
+    <primitive name="int32" primitiveType="int32"/>
+    <primitive name="int64" primitiveType="int64"/>
+    <primitive name="uint8" primitiveType="uint8"/>
+    <primitive name="uint16" primitiveType="uint16"/>
+
+    <type name="priceScaled" primitiveType="int64" description="Price * 1e8"/>
+    <type name="qtyScaled" primitiveType="int64" description="Qty * 1e8"/>
+
+    <!-- Canonical SBE message header required by wrapAndApplyHeader() generation. -->
+    <composite name="messageHeader" description="Standard SBE message header">
+      <type name="blockLength" primitiveType="uint16"/>
+      <type name="templateId" primitiveType="uint16"/>
+      <type name="schemaId" primitiveType="uint16"/>
+      <type name="version" primitiveType="uint16"/>
+    </composite>
+
+    <!--
+      Timestamp sources are intentionally split by producer:
+      - gatewayNanos: System.nanoTime() written by gateway threads
+      - clusterMicros: cluster.time() written by the cluster-service thread
+      These must never be mixed without an explicit micros -> nanos conversion.
+    -->
+    <type name="gatewayNanos" primitiveType="int64" description="System.nanoTime() at the gateway process. Nanosecond resolution. Written by gateway thread only — never cluster.time(), which is microseconds. Do not mix with clusterMicros fields without ×1000 conversion."/>
+    <type name="clusterMicros" primitiveType="int64" description="cluster.time() from Aeron Cluster. Microsecond resolution. Deterministic and identical across all 3 cluster nodes. Written by cluster-service thread only — never System.nanoTime()."/>
+    <type name="bps" primitiveType="int64" description="Basis points * 1"/>
+    <type name="venueId" primitiveType="int32" description="Registry-assigned venue int ID"/>
+    <type name="instrumentId" primitiveType="int32" description="Registry-assigned instrument int ID"/>
+    <type name="strategyId" primitiveType="int16" description="Strategy int constant"/>
+    <type name="clOrdIdType" primitiveType="int64" description="cluster.logPosition()-based order ID"/>
+
+    <!--
+      Standard SBE variable-length string encoding.
+      The four command/event messages using venueOrderId rely on generated
+      encodedLength() rather than fixed blockLength for cursor advancement.
+    -->
+    <composite name="varStringEncoding">
+      <type name="length" primitiveType="uint16"/>
+      <type name="varData" primitiveType="uint8" length="0"/>
+    </composite>
+
+    <enum name="Side" encodingType="int8">
+      <validValue name="BUY">1</validValue>
+      <validValue name="SELL">2</validValue>
+    </enum>
+    <enum name="OrdType" encodingType="int8">
+      <validValue name="MARKET">1</validValue>
+      <validValue name="LIMIT">2</validValue>
+    </enum>
+    <enum name="TimeInForce" encodingType="int8">
+      <validValue name="DAY">0</validValue>
+      <validValue name="GTC">1</validValue>
+      <validValue name="IOC">3</validValue>
+      <validValue name="FOK">4</validValue>
+    </enum>
+    <enum name="ExecType" encodingType="int8">
+      <validValue name="NEW">0</validValue>
+      <validValue name="PARTIAL_FILL">1</validValue>
+      <validValue name="CANCELED">4</validValue>
+      <validValue name="REPLACED">5</validValue>
+      <validValue name="REJECTED">8</validValue>
+      <validValue name="ORDER_STATUS">9</validValue>
+      <validValue name="EXPIRED">12</validValue>
+      <validValue name="FILL">15</validValue>
+    </enum>
+    <enum name="EntryType" encodingType="int8">
+      <validValue name="BID">0</validValue>
+      <validValue name="ASK">1</validValue>
+      <validValue name="TRADE">2</validValue>
+    </enum>
+    <enum name="UpdateAction" encodingType="int8">
+      <validValue name="NEW">0</validValue>
+      <validValue name="CHANGE">1</validValue>
+      <validValue name="DELETE">2</validValue>
+    </enum>
+    <enum name="VenueStatus" encodingType="int8">
+      <validValue name="CONNECTED">1</validValue>
+      <validValue name="DISCONNECTED">2</validValue>
+    </enum>
+    <enum name="BooleanType" encodingType="int8">
+      <validValue name="FALSE">0</validValue>
+      <validValue name="TRUE">1</validValue>
+    </enum>
+    <enum name="RiskEventType" encodingType="int8">
+      <validValue name="KILL_SWITCH_ACTIVATED">1</validValue>
+      <validValue name="KILL_SWITCH_DEACTIVATED">2</validValue>
+      <validValue name="SOFT_LIMIT_BREACH">3</validValue>
+      <validValue name="HARD_LIMIT_REJECT">4</validValue>
+      <validValue name="RECOVERY_LOCK_SET">5</validValue>
+      <validValue name="RECOVERY_LOCK_CLEARED">6</validValue>
+      <validValue name="ORDER_STATE_ERROR">7</validValue>
+    </enum>
+    <enum name="AdminCommandType" encodingType="int8">
+      <validValue name="DEACTIVATE_KILL_SWITCH">1</validValue>
+      <validValue name="ACTIVATE_KILL_SWITCH">2</validValue>
+      <validValue name="PAUSE_STRATEGY">3</validValue>
+      <validValue name="RESUME_STRATEGY">4</validValue>
+      <validValue name="RESET_DAILY_COUNTERS">5</validValue>
+      <validValue name="TRIGGER_SNAPSHOT">6</validValue>
+    </enum>
+  </types>
+
+  <sbe:message name="MarketDataEvent" id="1" description="Normalized FIX market data entry">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="entryType" id="3" type="EntryType"/>
+    <field name="updateAction" id="4" type="UpdateAction"/>
+    <field name="priceScaled" id="5" type="priceScaled"/>
+    <field name="sizeScaled" id="6" type="qtyScaled"/>
+    <field name="priceLevel" id="7" type="int32" description="0=best, 1=second, etc."/>
+    <field name="ingressTimestampNanos" id="8" type="gatewayNanos" description="System.nanoTime() at gateway"/>
+    <field name="exchangeTimestampNanos" id="9" type="gatewayNanos" description="FIX tag 60 converted"/>
+    <field name="fixSeqNum" id="10" type="int32" description="FIX MsgSeqNum tag 34"/>
+  </sbe:message>
+
+  <sbe:message name="MarketByOrderEvent" id="5" description="Normalized FIX L3 order-level market data entry">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="side" id="3" type="Side"/>
+    <field name="updateAction" id="4" type="UpdateAction"/>
+    <field name="priceScaled" id="5" type="priceScaled"/>
+    <field name="sizeScaled" id="6" type="qtyScaled"/>
+    <field name="ingressTimestampNanos" id="7" type="gatewayNanos" description="System.nanoTime() at gateway"/>
+    <field name="exchangeTimestampNanos" id="8" type="gatewayNanos" description="FIX tag 60 converted"/>
+    <field name="fixSeqNum" id="9" type="int32" description="FIX MsgSeqNum tag 34"/>
+    <data name="venueOrderId" id="10" type="varStringEncoding" description="FIX MDEntryID tag 278 or venue-specific L3 order identifier"/>
+  </sbe:message>
+
+  <sbe:message name="ExecutionEvent" id="2" description="Normalized FIX ExecutionReport">
+    <field name="clOrdId" id="1" type="clOrdIdType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="execType" id="4" type="ExecType"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="fillPriceScaled" id="6" type="priceScaled" description="tag 31; 0 if no fill"/>
+    <field name="fillQtyScaled" id="7" type="qtyScaled" description="tag 32; 0 if no fill"/>
+    <field name="cumQtyScaled" id="8" type="qtyScaled" description="tag 14"/>
+    <field name="leavesQtyScaled" id="9" type="qtyScaled" description="tag 151"/>
+    <field name="rejectCode" id="10" type="int32" description="tag 103; 0 if no reject"/>
+    <field name="ingressTimestampNanos" id="11" type="gatewayNanos"/>
+    <field name="exchangeTimestampNanos" id="12" type="gatewayNanos" description="tag 60"/>
+    <field name="fixSeqNum" id="13" type="int32"/>
+    <field name="isFinal" id="14" type="BooleanType" description="true if order now closed"/>
+    <data name="venueOrderId" id="15" type="varStringEncoding"/>
+    <data name="execId" id="16" type="varStringEncoding" description="tag 17 for dedup"/>
+  </sbe:message>
+
+  <sbe:message name="VenueStatusEvent" id="3" description="FIX session connect/disconnect">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="status" id="2" type="VenueStatus"/>
+    <field name="ingressTimestampNanos" id="3" type="gatewayNanos"/>
+  </sbe:message>
+
+  <sbe:message name="BalanceQueryResponse" id="4" description="REST balance query result">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="balanceScaled" id="3" type="qtyScaled" description="Available balance * 1e8"/>
+    <field name="queryTimestampNanos" id="4" type="gatewayNanos"/>
+  </sbe:message>
+
+  <sbe:message name="NewOrderCommand" id="10" description="Order submission command to gateway">
+    <field name="clOrdId" id="1" type="clOrdIdType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="side" id="4" type="Side"/>
+    <field name="ordType" id="5" type="OrdType"/>
+    <field name="timeInForce" id="6" type="TimeInForce"/>
+    <field name="priceScaled" id="7" type="priceScaled"/>
+    <field name="qtyScaled" id="8" type="qtyScaled"/>
+    <field name="strategyId" id="9" type="strategyId"/>
+  </sbe:message>
+
+  <sbe:message name="CancelOrderCommand" id="11" description="Cancel request to gateway">
+    <field name="cancelClOrdId" id="1" type="clOrdIdType" description="New ID for this cancel"/>
+    <field name="origClOrdId" id="2" type="clOrdIdType" description="Order being canceled"/>
+    <field name="venueId" id="3" type="venueId"/>
+    <field name="instrumentId" id="4" type="instrumentId"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="originalQtyScaled" id="6" type="qtyScaled"/>
+    <data name="venueOrderId" id="7" type="varStringEncoding"/>
+  </sbe:message>
+
+  <sbe:message name="FillEvent" id="20" description="Fill notification for metrics/audit">
+    <field name="clOrdId" id="1" type="clOrdIdType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="strategyId" id="4" type="strategyId"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="fillPriceScaled" id="6" type="priceScaled"/>
+    <field name="fillQtyScaled" id="7" type="qtyScaled"/>
+    <field name="cumFillQtyScaled" id="8" type="qtyScaled"/>
+    <field name="leavesQtyScaled" id="9" type="qtyScaled"/>
+    <field name="isFinal" id="10" type="BooleanType"/>
+    <field name="isSynthetic" id="11" type="BooleanType" description="True if injected during reconciliation"/>
+    <field name="fillTimestampNanos" id="12" type="gatewayNanos"/>
+    <field name="ingressTimestampNanos" id="13" type="gatewayNanos"/>
+  </sbe:message>
+
+  <sbe:message name="PositionEvent" id="21" description="Position snapshot for metrics/audit">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="netQtyScaled" id="3" type="qtyScaled"/>
+    <field name="avgEntryPriceScaled" id="4" type="priceScaled"/>
+    <field name="realizedPnlScaled" id="5" type="priceScaled"/>
+    <field name="unrealizedPnlScaled" id="6" type="priceScaled"/>
+    <field name="snapshotClusterTime" id="7" type="clusterMicros"/>
+    <field name="triggeringClOrdId" id="8" type="clOrdIdType"/>
+  </sbe:message>
+
+  <sbe:message name="RiskEvent" id="22" description="Risk state change">
+    <field name="riskEventType" id="1" type="RiskEventType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="affectedClOrdId" id="4" type="clOrdIdType" description="0 if not order-specific"/>
+    <field name="limitValueScaled" id="5" type="int64"/>
+    <field name="currentValueScaled" id="6" type="int64"/>
+    <field name="eventClusterTime" id="7" type="clusterMicros"/>
+  </sbe:message>
+
+  <sbe:message name="OrderStatusQueryCommand" id="30" description="Instructs gateway to send FIX OrderStatusRequest for one order">
+    <field name="clOrdId" id="1" type="clOrdIdType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="side" id="4" type="Side"/>
+    <data name="venueOrderId" id="5" type="varStringEncoding" description="Needed for FIX tag 37 in OrderStatusRequest"/>
+  </sbe:message>
+
+  <sbe:message name="BalanceQueryRequest" id="31" description="Instructs gateway REST poller to query account balance">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="requestId" id="3" type="int64" description="cluster.logPosition() at time of request; echoed in response"/>
+  </sbe:message>
+
+  <sbe:message name="RecoveryCompleteEvent" id="32" description="Signals gateway that recovery is complete; strategies may resume">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="recoveryCompleteClusterTime" id="2" type="clusterMicros"/>
+  </sbe:message>
+
+  <sbe:message name="AdminCommand" id="33" description="Operator command; routed through gateway admin Aeron publication">
+    <field name="commandType" id="1" type="AdminCommandType"/>
+    <field name="venueId" id="2" type="venueId" description="0 = all venues"/>
+    <field name="instrumentId" id="3" type="instrumentId" description="0 = all instruments"/>
+    <field name="operatorId" id="4" type="int32"/>
+    <field name="hmacSignature" id="5" type="int64" description="Truncated HMAC-SHA256 of (commandType|venueId|instrumentId|operatorId|nonce)"/>
+    <field name="nonce" id="6" type="int64" description="Monotonically increasing; prevents replay attacks"/>
+  </sbe:message>
+
+  <sbe:message name="ReplaceOrderCommand" id="34" description="Replace via cancel+new; gateway synthesizes the two FIX messages">
+    <field name="origClOrdId" id="1" type="clOrdIdType"/>
+    <field name="newClOrdId" id="2" type="clOrdIdType"/>
+    <field name="venueId" id="3" type="venueId"/>
+    <field name="instrumentId" id="4" type="instrumentId"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="newPriceScaled" id="6" type="priceScaled"/>
+    <field name="newQtyScaled" id="7" type="qtyScaled"/>
+    <field name="origQtyScaled" id="8" type="qtyScaled" description="Required for FIX cancel tag 38"/>
+    <data name="venueOrderId" id="9" type="varStringEncoding" description="Required for FIX cancel tag 37"/>
+  </sbe:message>
+
+  <!-- Snapshot messages share the same schema so recovery-generated codecs stay version-locked with the operational messages. -->
+  <sbe:message name="OrderStateSnapshot" id="50">
+    <field name="clOrdId" id="1" type="clOrdIdType"/>
+    <field name="venueId" id="2" type="venueId"/>
+    <field name="instrumentId" id="3" type="instrumentId"/>
+    <field name="strategyId" id="4" type="strategyId"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="ordType" id="6" type="OrdType"/>
+    <field name="timeInForce" id="7" type="TimeInForce"/>
+    <field name="status" id="8" type="int8"/>
+    <field name="priceScaled" id="9" type="priceScaled"/>
+    <field name="qtyScaled" id="10" type="qtyScaled"/>
+    <field name="cumFillQtyScaled" id="11" type="qtyScaled"/>
+    <field name="leavesQtyScaled" id="12" type="qtyScaled"/>
+    <field name="avgFillPriceScaled" id="13" type="priceScaled"/>
+    <field name="createdClusterTime" id="14" type="clusterMicros"/>
+    <data name="venueOrderId" id="15" type="varStringEncoding"/>
+  </sbe:message>
+
+  <sbe:message name="PositionSnapshot" id="51">
+    <field name="venueId" id="1" type="venueId"/>
+    <field name="instrumentId" id="2" type="instrumentId"/>
+    <field name="netQtyScaled" id="3" type="qtyScaled"/>
+    <field name="avgEntryPriceScaled" id="4" type="priceScaled"/>
+    <field name="realizedPnlScaled" id="5" type="priceScaled"/>
+  </sbe:message>
+
+  <sbe:message name="RiskStateSnapshot" id="52">
+    <field name="killSwitchActive" id="1" type="BooleanType"/>
+    <field name="dailyRealizedPnlScaled" id="2" type="int64"/>
+    <field name="dailyVolumeScaled" id="3" type="int64"/>
+    <field name="snapshotClusterTime" id="4" type="clusterMicros"/>
+  </sbe:message>
+</sbe:messageSchema>

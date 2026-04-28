@@ -1,0 +1,8 @@
+# HotSpot compile-command overrides used by the production startup scripts.
+#
+# TASK-001 owns only the presence and baseline content of this file. The methods
+# referenced here become real once later task cards implement the hot-path classes.
+inline ig/rueishi/nitroj/exchange/cluster/MessageRouter dispatch
+inline ig/rueishi/nitroj/exchange/common/ScaledMath safeMulDiv
+inline ig/rueishi/nitroj/exchange/cluster/RiskEngineImpl preTradeCheck
+dontinline ig/rueishi/nitroj/exchange/common/ScaledMath vwap

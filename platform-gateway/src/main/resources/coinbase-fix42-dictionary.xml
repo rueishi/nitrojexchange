@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Coinbase FIX 4.2 dictionary for gateway-side Artio codec generation.
+
+  This file is intentionally scoped to the FIX session fields, Coinbase Logon
+  customisation, and the outbound order messages needed by TASK-013. Artio's
+  CodecGenerationTool reads the dictionary at build time and generates the
+  concrete encoder classes under src/generated/java. The important Coinbase
+	  extensions are tag 8013, CancelOrdersOnDisconnect, which is declared as a
+	  CHAR and attached directly to the Logon message so generated LogonEncoder
+	  exposes cancelOrdersOnDisconnect(byte), and tag 7928, SelfTradeType, which
+	  lets Coinbase order-entry policy encode venue-native STP on NewOrderSingle.
+
+  The dictionary keeps standard FIX 4.2 numbering for header, trailer, and
+  Logon authentication fields. RawDataLength precedes RawData because Artio
+  validates DATA fields against their associated length field.
+-->
+<fix type="FIX" major="4" minor="2">
+    <header>
+        <field name="BeginString" required="Y"/>
+        <field name="BodyLength" required="Y"/>
+        <field name="MsgType" required="Y"/>
+        <field name="SenderCompID" required="Y"/>
+        <field name="TargetCompID" required="Y"/>
+        <field name="MsgSeqNum" required="Y"/>
+        <field name="SenderSubID" required="N"/>
+        <field name="SenderLocationID" required="N"/>
+        <field name="TargetSubID" required="N"/>
+        <field name="TargetLocationID" required="N"/>
+        <field name="PossDupFlag" required="N"/>
+        <field name="PossResend" required="N"/>
+        <field name="SendingTime" required="Y"/>
+        <field name="OrigSendingTime" required="N"/>
+        <field name="LastMsgSeqNumProcessed" required="N"/>
+    </header>
+
+    <messages>
+        <message name="Logon" msgtype="A" msgcat="admin">
+            <field name="EncryptMethod" required="Y"/>
+            <field name="HeartBtInt" required="Y"/>
+            <field name="RawDataLength" required="N"/>
+            <field name="RawData" required="N"/>
+            <field name="ResetSeqNumFlag" required="N"/>
+            <field name="Password" required="N"/>
+            <field name="CancelOrdersOnDisconnect" required="Y"/>
+        </message>
+        <message name="NewOrderSingle" msgtype="D" msgcat="app">
+            <field name="Account" required="N"/>
+            <field name="ClOrdID" required="Y"/>
+            <field name="HandlInst" required="Y"/>
+            <field name="Symbol" required="Y"/>
+            <field name="Side" required="Y"/>
+            <field name="TransactTime" required="Y"/>
+            <field name="OrderQty" required="Y"/>
+	            <field name="OrdType" required="Y"/>
+	            <field name="Price" required="N"/>
+	            <field name="TimeInForce" required="N"/>
+	            <field name="SelfTradeType" required="N"/>
+	        </message>
+        <message name="OrderCancelRequest" msgtype="F" msgcat="app">
+            <field name="OrigClOrdID" required="Y"/>
+            <field name="OrderID" required="N"/>
+            <field name="ClOrdID" required="Y"/>
+            <field name="Symbol" required="Y"/>
+            <field name="Side" required="Y"/>
+            <field name="TransactTime" required="Y"/>
+            <field name="OrderQty" required="N"/>
+        </message>
+        <message name="OrderCancelReplaceRequest" msgtype="G" msgcat="app">
+            <field name="OrderID" required="N"/>
+            <field name="OrigClOrdID" required="Y"/>
+            <field name="ClOrdID" required="Y"/>
+            <field name="HandlInst" required="Y"/>
+            <field name="Symbol" required="Y"/>
+            <field name="Side" required="Y"/>
+            <field name="TransactTime" required="Y"/>
+            <field name="OrderQty" required="Y"/>
+            <field name="OrdType" required="Y"/>
+            <field name="Price" required="N"/>
+            <field name="TimeInForce" required="N"/>
+        </message>
+        <message name="OrderStatusRequest" msgtype="H" msgcat="app">
+            <field name="OrderID" required="N"/>
+            <field name="ClOrdID" required="Y"/>
+            <field name="Symbol" required="N"/>
+            <field name="Side" required="N"/>
+        </message>
+    </messages>
+
+    <trailer>
+        <field name="CheckSum" required="Y"/>
+    </trailer>
+
+    <fields>
+        <field number="8" name="BeginString" type="STRING"/>
+        <field number="9" name="BodyLength" type="LENGTH"/>
+        <field number="10" name="CheckSum" type="STRING"/>
+        <field number="1" name="Account" type="STRING"/>
+        <field number="11" name="ClOrdID" type="STRING"/>
+        <field number="21" name="HandlInst" type="CHAR"/>
+        <field number="37" name="OrderID" type="STRING"/>
+        <field number="38" name="OrderQty" type="QTY"/>
+        <field number="40" name="OrdType" type="CHAR"/>
+        <field number="41" name="OrigClOrdID" type="STRING"/>
+        <field number="44" name="Price" type="PRICE"/>
+        <field number="34" name="MsgSeqNum" type="SEQNUM"/>
+        <field number="35" name="MsgType" type="STRING"/>
+        <field number="43" name="PossDupFlag" type="BOOLEAN"/>
+        <field number="49" name="SenderCompID" type="STRING"/>
+        <field number="54" name="Side" type="CHAR"/>
+        <field number="55" name="Symbol" type="STRING"/>
+        <field number="52" name="SendingTime" type="UTCTIMESTAMP"/>
+        <field number="56" name="TargetCompID" type="STRING"/>
+        <field number="57" name="TargetSubID" type="STRING"/>
+        <field number="59" name="TimeInForce" type="CHAR"/>
+        <field number="60" name="TransactTime" type="UTCTIMESTAMP"/>
+        <field number="91" name="SecureDataLength" type="LENGTH"/>
+        <field number="92" name="SecureData" type="DATA"/>
+        <field number="95" name="RawDataLength" type="LENGTH"/>
+        <field number="96" name="RawData" type="DATA"/>
+        <field number="98" name="EncryptMethod" type="INT"/>
+        <field number="108" name="HeartBtInt" type="INT"/>
+        <field number="122" name="OrigSendingTime" type="UTCTIMESTAMP"/>
+        <field number="123" name="GapFillFlag" type="BOOLEAN"/>
+        <field number="128" name="DeliverToCompID" type="STRING"/>
+        <field number="129" name="DeliverToSubID" type="STRING"/>
+        <field number="142" name="SenderLocationID" type="STRING"/>
+        <field number="143" name="TargetLocationID" type="STRING"/>
+        <field number="369" name="LastMsgSeqNumProcessed" type="SEQNUM"/>
+        <field number="50" name="SenderSubID" type="STRING"/>
+        <field number="97" name="PossResend" type="BOOLEAN"/>
+	        <field number="141" name="ResetSeqNumFlag" type="BOOLEAN"/>
+	        <field number="554" name="Password" type="STRING"/>
+	        <field number="7928" name="SelfTradeType" type="CHAR"/>
+	        <field number="8013" name="CancelOrdersOnDisconnect" type="CHAR"/>
+	    </fields>
+	</fix>
