@@ -1,6 +1,7 @@
-# NitroJEx
+# NitroJExchange — High-Frequency Liquidity and Arbitrage Infrastructure
+## A Multi-Venue, Multi-Strategy Pluggable Prop-Stack
 
-NitroJEx is a Java 21 low-latency trading platform prototype designed for market-making and venue-arbitrage workloads. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
+NitroJExchange is a Java 21 low-latency trading platform prototype , modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
 
 The active development line is **V11.0**. V10.0 is preserved as the frozen baseline, while V11.0 adds multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage.
 
