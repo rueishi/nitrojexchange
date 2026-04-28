@@ -1,44 +1,119 @@
 package ig.rueishi.nitroj.exchange.cluster;
 
+import ig.rueishi.nitroj.exchange.common.VenueOrderId;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.order.OrderState;
-import ig.rueishi.nitroj.exchange.common.VenueOrderId;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
  * Tracks NitroJEx-owned visible working liquidity outside the public market book.
  *
- * <p>Responsibility: maintain a small cluster-thread overlay of NitroJEx's own
- * resting quantity by venue, instrument, side, and price. Role in system:
- * arbitrage and hedging read this overlay through {@link ExternalLiquidityView}
- * to avoid treating NitroJEx's own quotes as external executable liquidity.
- * Relationships: {@link OrderState} remains the authoritative order lifecycle
- * source, while {@link L2OrderBook}, {@link VenueL3Book}, and
- * {@link ConsolidatedL2Book} remain gross venue-published market views. Lifecycle:
- * updated from order-manager state transitions and cleared on cluster reset.
- * Design intent: keep self-liquidity subtraction explicit and reversible without
- * contaminating public market-data books with private order ownership.</p>
+ * <p>Responsibility: maintain a bounded cluster-thread overlay of NitroJEx's own
+ * resting quantity by venue, instrument, side, price, and optional venue order
+ * ID. Role in system: arbitrage and hedging read this overlay through {@link
+ * ExternalLiquidityView} to avoid treating NitroJEx's own quotes as external
+ * executable liquidity. Relationships: {@link OrderState} remains the
+ * authoritative order lifecycle source, while {@link L2OrderBook}, {@link
+ * VenueL3Book}, and {@link ConsolidatedL2Book} remain gross venue-published
+ * market views.</p>
+ *
+ * <p>V12 storage model: orders, exact venue-order-ID lookup, and aggregate
+ * level quantities live in fixed-size primitive open-addressed tables. Venue
+ * order IDs are copied into preallocated byte slots and compared by fingerprint
+ * plus exact bytes, so hash collisions cannot mark the wrong order as own.
+ * Exact L3 subtraction uses the venue-order-ID table. L2 approximation uses
+ * the level table. Self-cross checks scan active own-order slots directly.
+ * Capacity-full behavior is deterministic: a new order is ignored when the
+ * configured order capacity is full, while updates/removes for existing orders
+ * still proceed and stale venue-ID mappings are cleaned up.</p>
  */
 public final class OwnOrderOverlay {
     public static final int DEFAULT_MAX_OWN_ORDERS = 100_000;
+    private static final byte EMPTY = 0;
+    private static final byte OCCUPIED = 1;
+    private static final byte DELETED = 2;
+    private static final byte BID_SIDE = 1;
+    private static final byte ASK_SIDE = 2;
+    private static final long FNV_OFFSET = 0xcbf29ce484222325L;
+    private static final long FNV_PRIME = 0x100000001b3L;
+
     private final int maxOwnOrders;
-    private final Map<Long, OwnOrder> ordersByClOrdId = new HashMap<>();
-    private final Map<VenueOrderKey, Long> clOrdIdByVenueOrderId = new HashMap<>();
-    private final Map<LevelKey, Long> ownSizeByLevel = new HashMap<>();
+    private final int orderMask;
+    private final int venueOrderMask;
+    private final int levelMask;
+    private final FingerprintStrategy fingerprintStrategy;
+    private final byte[] orderStates;
+    private final long[] orderClOrdIds;
+    private final int[] orderVenueIds;
+    private final int[] orderInstrumentIds;
+    private final byte[] orderSides;
+    private final long[] orderPrices;
+    private final long[] orderRemainingQty;
+    private final boolean[] orderHasVenueOrderId;
+    private final byte[] orderVenueOrderIdBytes;
+    private final int[] orderVenueOrderIdLengths;
+    private final long[] orderVenueOrderIdFingerprints;
+    private final byte[] venueOrderStates;
+    private final int[] venueOrderVenueIds;
+    private final int[] venueOrderInstrumentIds;
+    private final byte[] venueOrderIdBytes;
+    private final int[] venueOrderIdLengths;
+    private final long[] venueOrderIdFingerprints;
+    private final long[] venueOrderClOrdIds;
+    private final byte[] levelStates;
+    private final int[] levelVenueIds;
+    private final int[] levelInstrumentIds;
+    private final byte[] levelSides;
+    private final long[] levelPrices;
+    private final long[] levelSizes;
+    private final byte[] idScratch = new byte[VenueOrderId.MAX_LENGTH];
+    private int orderCount;
 
     public OwnOrderOverlay() {
         this(DEFAULT_MAX_OWN_ORDERS);
     }
 
     public OwnOrderOverlay(final int maxOwnOrders) {
+        this(maxOwnOrders, OwnOrderOverlay::fingerprint);
+    }
+
+    OwnOrderOverlay(final int maxOwnOrders, final FingerprintStrategy fingerprintStrategy) {
         if (maxOwnOrders <= 0) {
             throw new IllegalArgumentException("maxOwnOrders must be positive");
         }
         this.maxOwnOrders = maxOwnOrders;
+        this.fingerprintStrategy = Objects.requireNonNull(fingerprintStrategy, "fingerprintStrategy");
+        final int capacity = tableCapacity(maxOwnOrders);
+        orderMask = capacity - 1;
+        venueOrderMask = capacity - 1;
+        levelMask = capacity - 1;
+        orderStates = new byte[capacity];
+        orderClOrdIds = new long[capacity];
+        orderVenueIds = new int[capacity];
+        orderInstrumentIds = new int[capacity];
+        orderSides = new byte[capacity];
+        orderPrices = new long[capacity];
+        orderRemainingQty = new long[capacity];
+        orderHasVenueOrderId = new boolean[capacity];
+        orderVenueOrderIdBytes = new byte[capacity * VenueOrderId.MAX_LENGTH];
+        orderVenueOrderIdLengths = new int[capacity];
+        orderVenueOrderIdFingerprints = new long[capacity];
+        venueOrderStates = new byte[capacity];
+        venueOrderVenueIds = new int[capacity];
+        venueOrderInstrumentIds = new int[capacity];
+        venueOrderIdBytes = new byte[capacity * VenueOrderId.MAX_LENGTH];
+        venueOrderIdLengths = new int[capacity];
+        venueOrderIdFingerprints = new long[capacity];
+        venueOrderClOrdIds = new long[capacity];
+        levelStates = new byte[capacity];
+        levelVenueIds = new int[capacity];
+        levelInstrumentIds = new int[capacity];
+        levelSides = new byte[capacity];
+        levelPrices = new long[capacity];
+        levelSizes = new long[capacity];
     }
 
     /**
@@ -65,15 +140,6 @@ public final class OwnOrderOverlay {
 
     /**
      * Upserts a visible own order or removes it when it is not working.
-     *
-     * @param clOrdId internal client order ID
-     * @param venueOrderId venue order ID, optional for L2 approximation
-     * @param venueId venue ID
-     * @param instrumentId instrument ID
-     * @param side book side
-     * @param priceScaled price
-     * @param remainingQtyScaled visible remaining quantity
-     * @param working true when the order should be considered visible/working
      */
     public void upsert(
         final long clOrdId,
@@ -90,47 +156,64 @@ public final class OwnOrderOverlay {
             return;
         }
         validate(clOrdId, venueId, instrumentId, side, priceScaled, remainingQtyScaled);
-        final OwnOrder previous = ordersByClOrdId.get(clOrdId);
-        if (previous == null && ordersByClOrdId.size() >= maxOwnOrders) {
+        final int previousSlot = findOrder(clOrdId);
+        if (previousSlot < 0 && orderCount >= maxOwnOrders) {
             return;
         }
-        ordersByClOrdId.remove(clOrdId);
-        if (previous != null) {
-            adjust(previous.levelKey(), -previous.remainingQtyScaled);
-            if (hasText(previous.venueOrderId)) {
-                clOrdIdByVenueOrderId.remove(previous.venueOrderKey());
-            }
+        final int venueOrderIdLength = copyVenueOrderId(venueOrderId);
+        final long venueOrderIdFingerprint = venueOrderIdLength > 0
+            ? fingerprintStrategy.fingerprint(idScratch, 0, venueOrderIdLength)
+            : 0L;
+        final byte sideValue = sideValue(side);
+
+        final int slot = previousSlot >= 0 ? previousSlot : findOrderInsertionSlot(clOrdId);
+        if (slot < 0) {
+            return;
+        }
+        if (previousSlot >= 0) {
+            subtractExisting(slot);
+        } else {
+            orderStates[slot] = OCCUPIED;
+            orderClOrdIds[slot] = clOrdId;
+            orderCount++;
         }
 
-        final OwnOrder next = new OwnOrder(clOrdId, normalizedVenueOrderId(venueOrderId), venueId, instrumentId,
-            side, priceScaled, remainingQtyScaled);
-        ordersByClOrdId.put(clOrdId, next);
-        adjust(next.levelKey(), remainingQtyScaled);
-        if (hasText(next.venueOrderId)) {
-            clOrdIdByVenueOrderId.put(next.venueOrderKey(), clOrdId);
+        orderVenueIds[slot] = venueId;
+        orderInstrumentIds[slot] = instrumentId;
+        orderSides[slot] = sideValue;
+        orderPrices[slot] = priceScaled;
+        orderRemainingQty[slot] = remainingQtyScaled;
+        storeOrderVenueOrderId(slot, venueOrderIdLength, venueOrderIdFingerprint);
+        adjustLevel(venueId, instrumentId, sideValue, priceScaled, remainingQtyScaled);
+        if (venueOrderIdLength > 0) {
+            putVenueOrderMapping(venueId, instrumentId, venueOrderIdLength, venueOrderIdFingerprint, clOrdId);
         }
     }
 
-    /**
-     * Removes a tracked order.
-     *
-     * @param clOrdId internal client order ID
-     */
     public void remove(final long clOrdId) {
-        final OwnOrder previous = ordersByClOrdId.remove(clOrdId);
-        if (previous == null) {
+        final int slot = findOrder(clOrdId);
+        if (slot < 0) {
             return;
         }
-        adjust(previous.levelKey(), -previous.remainingQtyScaled);
-        if (hasText(previous.venueOrderId)) {
-            clOrdIdByVenueOrderId.remove(previous.venueOrderKey());
-        }
+        subtractExisting(slot);
+        orderStates[slot] = DELETED;
+        orderClOrdIds[slot] = 0L;
+        orderVenueIds[slot] = 0;
+        orderInstrumentIds[slot] = 0;
+        orderSides[slot] = 0;
+        orderPrices[slot] = 0L;
+        orderRemainingQty[slot] = 0L;
+        orderHasVenueOrderId[slot] = false;
+        orderVenueOrderIdLengths[slot] = 0;
+        orderVenueOrderIdFingerprints[slot] = 0L;
+        orderCount--;
     }
 
     public void clear() {
-        ordersByClOrdId.clear();
-        clOrdIdByVenueOrderId.clear();
-        ownSizeByLevel.clear();
+        Arrays.fill(orderStates, EMPTY);
+        Arrays.fill(venueOrderStates, EMPTY);
+        Arrays.fill(levelStates, EMPTY);
+        orderCount = 0;
     }
 
     public long ownSizeAt(
@@ -139,7 +222,11 @@ public final class OwnOrderOverlay {
         final EntryType side,
         final long priceScaled) {
 
-        return ownSizeByLevel.getOrDefault(new LevelKey(venueId, instrumentId, side, priceScaled), 0L);
+        if (side != EntryType.BID && side != EntryType.ASK) {
+            return 0L;
+        }
+        final int slot = findLevel(venueId, instrumentId, sideValue(side), priceScaled);
+        return slot < 0 ? 0L : levelSizes[slot];
     }
 
     public long exactOwnSizeByVenueOrderId(
@@ -149,10 +236,12 @@ public final class OwnOrderOverlay {
         final EntryType side,
         final long priceScaled) {
 
-        if (!hasText(venueOrderId)) {
+        final int length = copyVenueOrderId(venueOrderId);
+        if (length <= 0) {
             return 0L;
         }
-        return exactOwnSizeByVenueOrderId(normalizedVenueOrderId(venueOrderId), venueId, instrumentId, side, priceScaled);
+        return exactOwnSizeByVenueOrderId(idScratch, length,
+            fingerprintStrategy.fingerprint(idScratch, 0, length), venueId, instrumentId, side, priceScaled);
     }
 
     public long exactOwnSizeByVenueOrderId(
@@ -165,36 +254,12 @@ public final class OwnOrderOverlay {
         if (venueOrderId == null) {
             return 0L;
         }
-        final Long clOrdId = clOrdIdByVenueOrderId.get(new VenueOrderKey(venueId, instrumentId, venueOrderId));
-        if (clOrdId == null) {
-            return 0L;
-        }
-        final OwnOrder order = ordersByClOrdId.get(clOrdId);
-        if (order == null
-            || order.venueId != venueId
-            || order.instrumentId != instrumentId
-            || order.side != side
-            || order.priceScaled != priceScaled) {
-            return 0L;
-        }
-        return order.remainingQtyScaled;
+        venueOrderId.copyTo(idScratch, 0);
+        final int length = venueOrderId.length();
+        return exactOwnSizeByVenueOrderId(idScratch, length,
+            fingerprintStrategy.fingerprint(idScratch, 0, length), venueId, instrumentId, side, priceScaled);
     }
 
-    /**
-     * Reports whether a venue L3 order belongs to NitroJEx.
-     *
-     * <p>The match is deliberately strict: venue order ID, venue, instrument,
-     * side, and price must all agree with current order-manager-derived state.
-     * This prevents stale venue IDs or reused public order IDs from marking a
-     * gross L3 order as own after the original NitroJEx order is gone.</p>
-     *
-     * @param venueOrderId venue-assigned order identifier from the L3 feed
-     * @param venueId venue ID
-     * @param instrumentId instrument ID
-     * @param side book side
-     * @param priceScaled price
-     * @return true when this L3 order is a current NitroJEx-owned order
-     */
     public boolean isOwnVenueOrder(
         final String venueOrderId,
         final int venueId,
@@ -205,44 +270,28 @@ public final class OwnOrderOverlay {
         return exactOwnSizeByVenueOrderId(venueOrderId, venueId, instrumentId, side, priceScaled) > 0L;
     }
 
-    /**
-     * Checks whether a new order would cross NitroJEx's own resting liquidity.
-     *
-     * @param venueId venue ID
-     * @param instrumentId instrument ID
-     * @param newOrderSide side of the proposed order
-     * @param priceScaled proposed limit price
-     * @return true when the proposed order can match an own opposite-side order
-     */
     public boolean wouldSelfCross(
         final int venueId,
         final int instrumentId,
         final EntryType newOrderSide,
         final long priceScaled) {
 
-        for (OwnOrder order : ordersByClOrdId.values()) {
-            if (order.venueId != venueId || order.instrumentId != instrumentId) {
+        for (int slot = 0; slot < orderStates.length; slot++) {
+            if (orderStates[slot] != OCCUPIED
+                || orderVenueIds[slot] != venueId
+                || orderInstrumentIds[slot] != instrumentId) {
                 continue;
             }
-            if (newOrderSide == EntryType.BID && order.side == EntryType.ASK && order.priceScaled <= priceScaled) {
+            if (newOrderSide == EntryType.BID && orderSides[slot] == ASK_SIDE && orderPrices[slot] <= priceScaled) {
                 return true;
             }
-            if (newOrderSide == EntryType.ASK && order.side == EntryType.BID && order.priceScaled >= priceScaled) {
+            if (newOrderSide == EntryType.ASK && orderSides[slot] == BID_SIDE && orderPrices[slot] >= priceScaled) {
                 return true;
             }
         }
         return false;
     }
 
-    /**
-     * Checks for self-crossing after external-liquidity subtraction.
-     *
-     * <p>Own orders at a strictly better opposite price always block because a
-     * marketable order would sweep them before the target level. Own orders at
-     * the target price block only when no external quantity remains there; when
-     * external size remains, the strategy can reduce size and rely on venue
-     * self-trade prevention for the residual queue ambiguity.</p>
-     */
     public boolean wouldSelfCrossBeyondExternal(
         final int venueId,
         final int instrumentId,
@@ -250,17 +299,19 @@ public final class OwnOrderOverlay {
         final long priceScaled,
         final long externalSizeAtPrice) {
 
-        for (OwnOrder order : ordersByClOrdId.values()) {
-            if (order.venueId != venueId || order.instrumentId != instrumentId) {
+        for (int slot = 0; slot < orderStates.length; slot++) {
+            if (orderStates[slot] != OCCUPIED
+                || orderVenueIds[slot] != venueId
+                || orderInstrumentIds[slot] != instrumentId) {
                 continue;
             }
-            if (newOrderSide == EntryType.BID && order.side == EntryType.ASK) {
-                if (order.priceScaled < priceScaled || (order.priceScaled == priceScaled && externalSizeAtPrice <= 0L)) {
+            if (newOrderSide == EntryType.BID && orderSides[slot] == ASK_SIDE) {
+                if (orderPrices[slot] < priceScaled || (orderPrices[slot] == priceScaled && externalSizeAtPrice <= 0L)) {
                     return true;
                 }
             }
-            if (newOrderSide == EntryType.ASK && order.side == EntryType.BID) {
-                if (order.priceScaled > priceScaled || (order.priceScaled == priceScaled && externalSizeAtPrice <= 0L)) {
+            if (newOrderSide == EntryType.ASK && orderSides[slot] == BID_SIDE) {
+                if (orderPrices[slot] > priceScaled || (orderPrices[slot] == priceScaled && externalSizeAtPrice <= 0L)) {
                     return true;
                 }
             }
@@ -269,16 +320,306 @@ public final class OwnOrderOverlay {
     }
 
     public int orderCount() {
-        return ordersByClOrdId.size();
+        return orderCount;
     }
 
-    private void adjust(final LevelKey key, final long delta) {
-        final long next = ownSizeByLevel.getOrDefault(key, 0L) + delta;
-        if (next <= 0L) {
-            ownSizeByLevel.remove(key);
-        } else {
-            ownSizeByLevel.put(key, next);
+    private long exactOwnSizeByVenueOrderId(
+        final byte[] source,
+        final int length,
+        final long fingerprint,
+        final int venueId,
+        final int instrumentId,
+        final EntryType side,
+        final long priceScaled) {
+
+        if (side != EntryType.BID && side != EntryType.ASK) {
+            return 0L;
         }
+        final int venueSlot = findVenueOrder(venueId, instrumentId, source, length, fingerprint);
+        if (venueSlot < 0) {
+            return 0L;
+        }
+        final int orderSlot = findOrder(venueOrderClOrdIds[venueSlot]);
+        if (orderSlot < 0
+            || orderVenueIds[orderSlot] != venueId
+            || orderInstrumentIds[orderSlot] != instrumentId
+            || orderSides[orderSlot] != sideValue(side)
+            || orderPrices[orderSlot] != priceScaled) {
+            return 0L;
+        }
+        return orderRemainingQty[orderSlot];
+    }
+
+    private void subtractExisting(final int slot) {
+        adjustLevel(orderVenueIds[slot], orderInstrumentIds[slot], orderSides[slot], orderPrices[slot],
+            -orderRemainingQty[slot]);
+        if (orderHasVenueOrderId[slot]) {
+            final int offset = orderVenueOrderIdOffset(slot);
+            removeVenueOrderMapping(
+                orderVenueIds[slot],
+                orderInstrumentIds[slot],
+                orderVenueOrderIdBytes,
+                offset,
+                orderVenueOrderIdLengths[slot],
+                orderVenueOrderIdFingerprints[slot],
+                orderClOrdIds[slot]);
+        }
+    }
+
+    private void storeOrderVenueOrderId(final int slot, final int length, final long fingerprint) {
+        orderHasVenueOrderId[slot] = length > 0;
+        orderVenueOrderIdLengths[slot] = length;
+        orderVenueOrderIdFingerprints[slot] = fingerprint;
+        if (length > 0) {
+            System.arraycopy(idScratch, 0, orderVenueOrderIdBytes, orderVenueOrderIdOffset(slot), length);
+        }
+    }
+
+    private void adjustLevel(
+        final int venueId,
+        final int instrumentId,
+        final byte side,
+        final long priceScaled,
+        final long delta) {
+
+        final int existing = findLevel(venueId, instrumentId, side, priceScaled);
+        final long next = (existing < 0 ? 0L : levelSizes[existing]) + delta;
+        if (next <= 0L) {
+            if (existing >= 0) {
+                levelStates[existing] = DELETED;
+                levelSizes[existing] = 0L;
+            }
+            return;
+        }
+        final int slot = existing >= 0 ? existing : findLevelInsertionSlot(venueId, instrumentId, side, priceScaled);
+        if (slot >= 0) {
+            levelStates[slot] = OCCUPIED;
+            levelVenueIds[slot] = venueId;
+            levelInstrumentIds[slot] = instrumentId;
+            levelSides[slot] = side;
+            levelPrices[slot] = priceScaled;
+            levelSizes[slot] = next;
+        }
+    }
+
+    private int findOrder(final long clOrdId) {
+        int slot = spread(clOrdId) & orderMask;
+        for (int probes = 0; probes < orderStates.length; probes++) {
+            final byte state = orderStates[slot];
+            if (state == EMPTY) {
+                return -1;
+            }
+            if (state == OCCUPIED && orderClOrdIds[slot] == clOrdId) {
+                return slot;
+            }
+            slot = (slot + 1) & orderMask;
+        }
+        return -1;
+    }
+
+    private int findOrderInsertionSlot(final long clOrdId) {
+        int slot = spread(clOrdId) & orderMask;
+        int firstDeleted = -1;
+        for (int probes = 0; probes < orderStates.length; probes++) {
+            final byte state = orderStates[slot];
+            if (state == EMPTY) {
+                return firstDeleted >= 0 ? firstDeleted : slot;
+            }
+            if (state == DELETED && firstDeleted < 0) {
+                firstDeleted = slot;
+            } else if (state == OCCUPIED && orderClOrdIds[slot] == clOrdId) {
+                return slot;
+            }
+            slot = (slot + 1) & orderMask;
+        }
+        return firstDeleted;
+    }
+
+    private void putVenueOrderMapping(
+        final int venueId,
+        final int instrumentId,
+        final int length,
+        final long fingerprint,
+        final long clOrdId) {
+
+        final int slot = findVenueOrderInsertionSlot(venueId, instrumentId, idScratch, 0, length, fingerprint);
+        if (slot < 0) {
+            return;
+        }
+        venueOrderStates[slot] = OCCUPIED;
+        venueOrderVenueIds[slot] = venueId;
+        venueOrderInstrumentIds[slot] = instrumentId;
+        venueOrderIdLengths[slot] = length;
+        venueOrderIdFingerprints[slot] = fingerprint;
+        venueOrderClOrdIds[slot] = clOrdId;
+        System.arraycopy(idScratch, 0, venueOrderIdBytes, venueOrderIdOffset(slot), length);
+    }
+
+    private void removeVenueOrderMapping(
+        final int venueId,
+        final int instrumentId,
+        final byte[] source,
+        final int sourceOffset,
+        final int length,
+        final long fingerprint,
+        final long clOrdId) {
+
+        final int slot = findVenueOrder(venueId, instrumentId, source, sourceOffset, length, fingerprint);
+        if (slot >= 0 && venueOrderClOrdIds[slot] == clOrdId) {
+            venueOrderStates[slot] = DELETED;
+            venueOrderClOrdIds[slot] = 0L;
+            venueOrderIdLengths[slot] = 0;
+            venueOrderIdFingerprints[slot] = 0L;
+        }
+    }
+
+    private int findVenueOrder(
+        final int venueId,
+        final int instrumentId,
+        final byte[] source,
+        final int length,
+        final long fingerprint) {
+
+        return findVenueOrder(venueId, instrumentId, source, 0, length, fingerprint);
+    }
+
+    private int findVenueOrder(
+        final int venueId,
+        final int instrumentId,
+        final byte[] source,
+        final int sourceOffset,
+        final int length,
+        final long fingerprint) {
+
+        int slot = venueOrderSlot(venueId, instrumentId, fingerprint);
+        for (int probes = 0; probes < venueOrderStates.length; probes++) {
+            final byte state = venueOrderStates[slot];
+            if (state == EMPTY) {
+                return -1;
+            }
+            if (state == OCCUPIED
+                && venueOrderVenueIds[slot] == venueId
+                && venueOrderInstrumentIds[slot] == instrumentId
+                && venueOrderIdFingerprints[slot] == fingerprint
+                && venueOrderIdLengths[slot] == length
+                && venueOrderIdEquals(slot, source, sourceOffset, length)) {
+                return slot;
+            }
+            slot = (slot + 1) & venueOrderMask;
+        }
+        return -1;
+    }
+
+    private int findVenueOrderInsertionSlot(
+        final int venueId,
+        final int instrumentId,
+        final byte[] source,
+        final int sourceOffset,
+        final int length,
+        final long fingerprint) {
+
+        int slot = venueOrderSlot(venueId, instrumentId, fingerprint);
+        int firstDeleted = -1;
+        for (int probes = 0; probes < venueOrderStates.length; probes++) {
+            final byte state = venueOrderStates[slot];
+            if (state == EMPTY) {
+                return firstDeleted >= 0 ? firstDeleted : slot;
+            }
+            if (state == DELETED && firstDeleted < 0) {
+                firstDeleted = slot;
+            } else if (state == OCCUPIED
+                && venueOrderVenueIds[slot] == venueId
+                && venueOrderInstrumentIds[slot] == instrumentId
+                && venueOrderIdFingerprints[slot] == fingerprint
+                && venueOrderIdLengths[slot] == length
+                && venueOrderIdEquals(slot, source, sourceOffset, length)) {
+                return slot;
+            }
+            slot = (slot + 1) & venueOrderMask;
+        }
+        return firstDeleted;
+    }
+
+    private boolean venueOrderIdEquals(final int slot, final byte[] source, final int sourceOffset, final int length) {
+        final int offset = venueOrderIdOffset(slot);
+        for (int i = 0; i < length; i++) {
+            if (venueOrderIdBytes[offset + i] != source[sourceOffset + i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private int findLevel(final int venueId, final int instrumentId, final byte side, final long priceScaled) {
+        int slot = levelSlot(venueId, instrumentId, side, priceScaled);
+        for (int probes = 0; probes < levelStates.length; probes++) {
+            final byte state = levelStates[slot];
+            if (state == EMPTY) {
+                return -1;
+            }
+            if (state == OCCUPIED
+                && levelVenueIds[slot] == venueId
+                && levelInstrumentIds[slot] == instrumentId
+                && levelSides[slot] == side
+                && levelPrices[slot] == priceScaled) {
+                return slot;
+            }
+            slot = (slot + 1) & levelMask;
+        }
+        return -1;
+    }
+
+    private int findLevelInsertionSlot(final int venueId, final int instrumentId, final byte side, final long priceScaled) {
+        int slot = levelSlot(venueId, instrumentId, side, priceScaled);
+        int firstDeleted = -1;
+        for (int probes = 0; probes < levelStates.length; probes++) {
+            final byte state = levelStates[slot];
+            if (state == EMPTY) {
+                return firstDeleted >= 0 ? firstDeleted : slot;
+            }
+            if (state == DELETED && firstDeleted < 0) {
+                firstDeleted = slot;
+            } else if (state == OCCUPIED
+                && levelVenueIds[slot] == venueId
+                && levelInstrumentIds[slot] == instrumentId
+                && levelSides[slot] == side
+                && levelPrices[slot] == priceScaled) {
+                return slot;
+            }
+            slot = (slot + 1) & levelMask;
+        }
+        return firstDeleted;
+    }
+
+    private int copyVenueOrderId(final String value) {
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
+        final int length = value.length();
+        if (length > VenueOrderId.MAX_LENGTH) {
+            throw new IllegalArgumentException("venue order id exceeds max length " + VenueOrderId.MAX_LENGTH);
+        }
+        for (int i = 0; i < length; i++) {
+            idScratch[i] = (byte)value.charAt(i);
+        }
+        return length;
+    }
+
+    private int orderVenueOrderIdOffset(final int slot) {
+        return slot * VenueOrderId.MAX_LENGTH;
+    }
+
+    private int venueOrderIdOffset(final int slot) {
+        return slot * VenueOrderId.MAX_LENGTH;
+    }
+
+    private int venueOrderSlot(final int venueId, final int instrumentId, final long fingerprint) {
+        return spread((((long)venueId) << 32) ^ (((long)instrumentId) << 16) ^ fingerprint) & venueOrderMask;
+    }
+
+    private int levelSlot(final int venueId, final int instrumentId, final byte side, final long priceScaled) {
+        return spread((((long)venueId) << 32) ^ (((long)instrumentId) << 16) ^ priceScaled
+            ^ (side * 0x9e3779b97f4a7c15L)) & levelMask;
     }
 
     private static void validate(
@@ -304,39 +645,40 @@ public final class OwnOrderOverlay {
         return Side.get(side) == Side.BUY ? EntryType.BID : EntryType.ASK;
     }
 
-    private static VenueOrderId normalizedVenueOrderId(final String value) {
-        return value == null || value.isBlank() ? null : VenueOrderId.fromAscii(value);
+    private static byte sideValue(final EntryType side) {
+        return side == EntryType.BID ? BID_SIDE : ASK_SIDE;
     }
 
-    private static boolean hasText(final String value) {
-        return value != null && !value.isBlank();
-    }
-
-    private static boolean hasText(final VenueOrderId value) {
-        return value != null;
-    }
-
-    private record OwnOrder(
-        long clOrdId,
-        VenueOrderId venueOrderId,
-        int venueId,
-        int instrumentId,
-        EntryType side,
-        long priceScaled,
-        long remainingQtyScaled) {
-
-        private LevelKey levelKey() {
-            return new LevelKey(venueId, instrumentId, side, priceScaled);
+    private static int tableCapacity(final int maxEntries) {
+        int capacity = 1;
+        final int target = Math.max(2, maxEntries * 2);
+        while (capacity < target) {
+            capacity <<= 1;
         }
+        return capacity;
+    }
 
-        private VenueOrderKey venueOrderKey() {
-            return new VenueOrderKey(venueId, instrumentId, venueOrderId);
+    private static int spread(final long value) {
+        long mixed = value;
+        mixed ^= mixed >>> 33;
+        mixed *= 0xff51afd7ed558ccdL;
+        mixed ^= mixed >>> 33;
+        mixed *= 0xc4ceb9fe1a85ec53L;
+        mixed ^= mixed >>> 33;
+        return (int)mixed;
+    }
+
+    private static long fingerprint(final byte[] source, final int offset, final int length) {
+        long hash = FNV_OFFSET;
+        for (int i = 0; i < length; i++) {
+            hash ^= source[offset + i] & 0xffL;
+            hash *= FNV_PRIME;
         }
+        return hash;
     }
 
-    private record LevelKey(int venueId, int instrumentId, EntryType side, long priceScaled) {
-    }
-
-    private record VenueOrderKey(int venueId, int instrumentId, VenueOrderId venueOrderId) {
+    @FunctionalInterface
+    interface FingerprintStrategy {
+        long fingerprint(byte[] source, int offset, int length);
     }
 }

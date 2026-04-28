@@ -4,6 +4,7 @@ import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.messages.MarketByOrderEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketByOrderEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
+import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -20,13 +21,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Unit coverage for deriving L2 levels from active L3 order state.
  *
  * <p>Responsibility: verifies add, change, delete, duplicate update, missing
- * delete, zero-size update, and book-mismatch behavior for {@link VenueL3Book}.
- * Role in system: protects the cluster-side bridge between normalized
- * MarketByOrderEvent messages and existing per-venue {@link L2OrderBook}
- * consumers. Relationships: uses real generated SBE codecs and a real off-heap
- * L2 book. Lifecycle: each test owns a confined arena that is closed after the
- * test. Design intent: keep L3 correctness focused on active order state and
- * derived aggregate levels without adding queue-position complexity.
+ * delete, zero-size update, bounded capacity, hash-collision byte comparison,
+ * exact own-order subtraction, and book-mismatch behavior for {@link
+ * VenueL3Book}. Role in system: protects the cluster-side bridge between
+ * normalized MarketByOrderEvent messages and existing per-venue {@link
+ * L2OrderBook} consumers. Relationships: uses real generated SBE codecs and a
+ * real off-heap L2 book. Lifecycle: each test owns a confined arena that is
+ * closed after the test. Design intent: keep L3 correctness focused on active
+ * order state and derived aggregate levels while proving V12's bounded storage
+ * preserves exact identity semantics.
  */
 final class VenueL3BookTest {
     private static final int VENUE_ID = Ids.VENUE_COINBASE;
@@ -125,6 +128,19 @@ final class VenueL3BookTest {
     }
 
     @Test
+    void sideMove_existingOrder_removesOldSideAndAddsNewSide() {
+        l3Book.apply(event("A", Side.BUY, UpdateAction.NEW, 100L, 10L), l2Book, 1L);
+
+        assertThat(l3Book.apply(event("A", Side.SELL, UpdateAction.CHANGE, 101L, 7L), l2Book, 2L)).isTrue();
+
+        assertThat(l3Book.levelSize(Side.BUY, 100L)).isZero();
+        assertThat(l3Book.levelSize(Side.SELL, 101L)).isEqualTo(7L);
+        assertThat(l2Book.getBestBid()).isEqualTo(Ids.INVALID_PRICE);
+        assertThat(l2Book.getBestAsk()).isEqualTo(101L);
+        assertThat(l2Book.askSizeAt(0)).isEqualTo(7L);
+    }
+
+    @Test
     void delete_existingOrder_removesOrderAndDerivedLevel() {
         l3Book.apply(event("A", Side.SELL, UpdateAction.NEW, 110L, 10L), l2Book, 1L);
 
@@ -151,6 +167,33 @@ final class VenueL3BookTest {
 
         assertThat(l3Book.activeOrderCount()).isZero();
         assertThat(l2Book.getBestBid()).isEqualTo(Ids.INVALID_PRICE);
+    }
+
+    @Test
+    void idCollision_exactByteComparisonKeepsOrdersDistinct() {
+        final VenueL3Book collidingBook = new VenueL3Book(VENUE_ID, INSTRUMENT_ID, 4, (source, offset, length) -> 7L);
+
+        assertThat(collidingBook.apply(event("A", Side.BUY, UpdateAction.NEW, 100L, 10L), l2Book, 1L)).isTrue();
+        assertThat(collidingBook.apply(event("B", Side.BUY, UpdateAction.NEW, 100L, 5L), l2Book, 2L)).isTrue();
+
+        assertThat(collidingBook.activeOrderCount()).isEqualTo(2);
+        assertThat(collidingBook.containsOrder("A")).isTrue();
+        assertThat(collidingBook.containsOrder("B")).isTrue();
+        assertThat(collidingBook.orderSize("A")).isEqualTo(10L);
+        assertThat(collidingBook.orderSize("B")).isEqualTo(5L);
+        assertThat(collidingBook.levelSize(Side.BUY, 100L)).isEqualTo(15L);
+    }
+
+    @Test
+    void exactOwnOrderLookup_subtractsOnlyMatchingOwnOrder() {
+        final OwnOrderOverlay ownOrders = new OwnOrderOverlay();
+        l3Book.apply(event("own-1", Side.BUY, UpdateAction.NEW, 100L, 10L), l2Book, 1L);
+        ownOrders.upsert(10_001L, "own-1", VENUE_ID, INSTRUMENT_ID, EntryType.BID, 100L, 4L, true);
+
+        assertThat(l3Book.externalOrderSize("own-1", ownOrders)).isEqualTo(6L);
+
+        ownOrders.upsert(10_001L, "own-1", VENUE_ID, INSTRUMENT_ID, EntryType.BID, 101L, 4L, true);
+        assertThat(l3Book.externalOrderSize("own-1", ownOrders)).isEqualTo(10L);
     }
 
     @Test

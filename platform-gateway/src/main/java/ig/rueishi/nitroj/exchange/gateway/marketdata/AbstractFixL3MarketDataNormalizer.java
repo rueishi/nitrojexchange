@@ -1,5 +1,6 @@
 package ig.rueishi.nitroj.exchange.gateway.marketdata;
 
+import ig.rueishi.nitroj.exchange.common.BoundedTextIdentity;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
 import io.aeron.logbuffer.ControlledFragmentHandler.Action;
@@ -20,6 +21,7 @@ import org.agrona.DirectBuffer;
  * allowing venues to customize identity/delete/size semantics.
  */
 public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2MarketDataNormalizer {
+    private final FixScan scan = new FixScan();
 
     @Override
     public Action onFixMessage(
@@ -30,9 +32,7 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
         final long ingressNanos) {
 
         try {
-            final FixScan scan = new FixScan();
-            scan.context.ingressNanos = ingressNanos;
-            scan.context.venueId = venueId(sessionId);
+            scan.reset(ingressNanos, venueId(sessionId));
 
             final int end = offset + length;
             int cursor = offset;
@@ -89,6 +89,11 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
         return context.mdEntryId;
     }
 
+    protected boolean hasOrderIdentity(final L3MarketDataContext context) {
+        return context.hasMdEntryIdRange()
+            || (context.mdEntryId != null && !context.mdEntryId.isBlank());
+    }
+
     protected boolean sizeIsAbsolute() {
         return true;
     }
@@ -117,11 +122,27 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
 
     private final class FixScan {
         private final L3MarketDataContext context = new L3MarketDataContext();
-        private String messageSymbol;
+        private DirectBuffer messageSymbolBuffer;
+        private int messageSymbolStart;
+        private int messageSymbolEnd;
         private int messageInstrumentId;
         private boolean marketData;
         private boolean hasEntry;
         private UpdateAction pendingUpdateAction = UpdateAction.NEW;
+
+        private void reset(final long ingressNanos, final int venueId) {
+            context.clearEntry();
+            context.ingressNanos = ingressNanos;
+            context.venueId = venueId;
+            context.fixSeqNum = 0;
+            messageSymbolBuffer = null;
+            messageSymbolStart = 0;
+            messageSymbolEnd = 0;
+            messageInstrumentId = 0;
+            marketData = false;
+            hasEntry = false;
+            pendingUpdateAction = UpdateAction.NEW;
+        }
 
         private void accept(
             final DirectBuffer buffer,
@@ -133,13 +154,14 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
                 case 35 -> marketData = isMarketDataMessage(buffer.getByte(valueStart));
                 case 34 -> context.fixSeqNum = parsePositiveInt(buffer, valueStart, valueEnd);
                 case 55 -> {
-                    final String decodedSymbol = buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart);
                     final int decodedInstrumentId = instrumentId(buffer, valueStart, valueEnd);
                     if (hasEntry) {
-                        context.symbol = decodedSymbol;
+                        context.setSymbolRange(buffer, valueStart, valueEnd - valueStart);
                         context.instrumentId = decodedInstrumentId;
                     } else {
-                        messageSymbol = decodedSymbol;
+                        messageSymbolBuffer = buffer;
+                        messageSymbolStart = valueStart;
+                        messageSymbolEnd = valueEnd;
                         messageInstrumentId = decodedInstrumentId;
                     }
                 }
@@ -147,7 +169,9 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
                     finish();
                     hasEntry = true;
                     context.clearEntry();
-                    context.symbol = messageSymbol;
+                    if (messageSymbolBuffer != null) {
+                        context.setSymbolRange(messageSymbolBuffer, messageSymbolStart, messageSymbolEnd - messageSymbolStart);
+                    }
                     context.instrumentId = messageInstrumentId;
                     context.side = mapSide(buffer.getByte(valueStart));
                     context.updateAction = pendingUpdateAction;
@@ -155,8 +179,8 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
                 }
                 case 270 -> context.priceScaled = parseScaled(buffer, valueStart, valueEnd);
                 case 271 -> context.sizeScaled = parseScaled(buffer, valueStart, valueEnd);
-                case 278 -> context.mdEntryId = buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart);
-                case 280 -> context.mdEntryRefId = buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart);
+                case 278 -> context.setMdEntryIdRange(buffer, valueStart, valueEnd - valueStart);
+                case 280 -> context.setMdEntryRefIdRange(buffer, valueStart, valueEnd - valueStart);
                 case 279 -> {
                     if (hasEntry && nextTag == 269) {
                         finish();
@@ -173,23 +197,26 @@ public abstract class AbstractFixL3MarketDataNormalizer extends AbstractFixL2Mar
         }
 
         private void finish() {
-            if (!marketData || !hasEntry || context.side == Side.NULL_VAL || context.symbol == null) {
+            if (!marketData || !hasEntry || context.side == Side.NULL_VAL || !context.hasSymbolRange()) {
                 hasEntry = false;
                 return;
             }
             if (context.instrumentId == 0) {
-                onUnknownSymbol(context.symbol);
+                onUnknownSymbol(context.symbolBuffer, context.symbolOffset, context.symbolOffset + context.symbolLength);
                 hasEntry = false;
                 return;
             }
             enrich(context);
-            final String identity = orderIdentity(context);
-            if (identity == null || identity.isBlank()) {
-                onMalformedMessage(new IllegalArgumentException("L3 MDEntryID tag 278 is required"));
+            if (!hasOrderIdentity(context)) {
+                onMalformedMessage();
                 hasEntry = false;
                 return;
             }
-            context.mdEntryId = identity;
+            if (context.hasMdEntryIdRange() && context.mdEntryIdLength > BoundedTextIdentity.DEFAULT_MAX_LENGTH) {
+                onMalformedMessage();
+                hasEntry = false;
+                return;
+            }
             publish(context);
             hasEntry = false;
         }

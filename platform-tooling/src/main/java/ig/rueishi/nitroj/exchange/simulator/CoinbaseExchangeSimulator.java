@@ -21,17 +21,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Responsibility: provides a deterministic test double for Coinbase FIX
  * order flow and market data. Role in system: early tests can still call the
- * simulator directly, while V11 live-wire tests can connect to its local TCP FIX
+ * simulator directly, while V12 live-wire and replay tests can connect to its local TCP FIX
  * acceptor and exercise session-level logon, market-data subscription,
  * order-entry, cancel, logout, and disconnect behavior without Coinbase network
  * access. Relationships: {@link SimulatorConfig} supplies startup settings,
  * {@link SimulatorOrderBook} tracks pending orders, {@link SimulatorSessionHandler}
  * routes inbound direct and wire commands, {@link MarketDataPublisher} emits
  * synthetic bid/ask ticks, and {@link ScenarioController} applies fill/reject and
- * disconnect behavior. Lifecycle: build, start, run test actions, assert, stop.
- * Design intent: keep this fixture deterministic and local while proving that
- * automated tests use FIX bytes over a socket rather than only direct Java method
- * calls.
+ * disconnect behavior. Lifecycle: build, start, run test actions, assert, reset,
+ * stop. Design intent: keep this fixture deterministic and local while proving
+ * that automated tests use FIX bytes over a socket rather than only direct Java
+ * method calls; reset also restores sequence counters so the same scripted L2/L3
+ * inputs can be replayed with byte-for-byte comparable ordering.
  */
 public final class CoinbaseExchangeSimulator implements AutoCloseable {
     private static final char SOH = '\001';
@@ -370,7 +371,12 @@ public final class CoinbaseExchangeSimulator implements AutoCloseable {
     }
 
     /**
-     * Clears received messages, counters, and pending order state.
+     * Clears received messages, counters, pending order state, and market-data sequences.
+     *
+     * <p>Replay and live-wire tests depend on this being a full deterministic
+     * boundary: after reset, emitting the same scripted L2/L3 snapshots and order
+     * scenarios produces the same event ordering, sequence numbers, counters, and
+     * pending-order state as a fresh simulator instance.</p>
      */
     public void reset() {
         receivedOrders.clear();

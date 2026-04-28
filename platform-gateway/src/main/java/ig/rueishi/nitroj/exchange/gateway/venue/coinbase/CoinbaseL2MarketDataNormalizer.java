@@ -9,44 +9,39 @@ import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.registry.IdRegistry;
 import org.agrona.DirectBuffer;
 
-import java.lang.System.Logger;
-import java.lang.System.Logger.Level;
 import java.util.Objects;
 
 /**
  * Coinbase L2 market-data normalizer backed by the shared standard FIX parser.
  *
- * <p>Responsibility: resolves Coinbase session and symbol IDs, logs Coinbase
+ * <p>Responsibility: resolves Coinbase session and symbol IDs, counts Coinbase
  * data-quality drops, and publishes normalized L2 entries to the gateway ring.
  * Role in system: selected when a Coinbase venue is configured with
  * {@code marketDataModel = L2}. Relationships: inherits FIX tag parsing from
  * {@link AbstractFixL2MarketDataNormalizer}, uses {@link IdRegistry} for IDs,
  * and emits {@code MarketDataEvent} payloads into {@link GatewayDisruptor}.
  * Lifecycle: one instance is owned by a venue runtime or compatibility handler.
- * Design intent: keep Coinbase-specific publication and warning policy out of
- * the shared parser.
+ * Design intent: keep Coinbase-specific publication separate from shared FIX
+ * parsing while inherited counters make expected data-quality drops visible
+ * without hot-path logging or exception construction.
  */
 public final class CoinbaseL2MarketDataNormalizer extends AbstractFixL2MarketDataNormalizer {
-    private static final Logger DEFAULT_LOGGER =
-        System.getLogger(CoinbaseL2MarketDataNormalizer.class.getName());
-
     private final IdRegistry idRegistry;
     private final GatewayDisruptor disruptor;
-    private final Logger logger;
     private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
     private final MarketDataEventEncoder marketDataEncoder = new MarketDataEventEncoder();
 
     public CoinbaseL2MarketDataNormalizer(final IdRegistry idRegistry, final GatewayDisruptor disruptor) {
-        this(idRegistry, disruptor, DEFAULT_LOGGER);
+        this.idRegistry = Objects.requireNonNull(idRegistry, "idRegistry");
+        this.disruptor = Objects.requireNonNull(disruptor, "disruptor");
     }
 
     public CoinbaseL2MarketDataNormalizer(
         final IdRegistry idRegistry,
         final GatewayDisruptor disruptor,
-        final Logger logger) {
-        this.idRegistry = Objects.requireNonNull(idRegistry, "idRegistry");
-        this.disruptor = Objects.requireNonNull(disruptor, "disruptor");
-        this.logger = Objects.requireNonNull(logger, "logger");
+        final System.Logger logger) {
+        this(idRegistry, disruptor);
+        Objects.requireNonNull(logger, "logger");
     }
 
     @Override
@@ -87,13 +82,4 @@ public final class CoinbaseL2MarketDataNormalizer extends AbstractFixL2MarketDat
         return true;
     }
 
-    @Override
-    protected void onUnknownSymbol(final String symbol) {
-        logger.log(Level.WARNING, "Unknown market-data symbol {0}; dropping FIX tick", symbol);
-    }
-
-    @Override
-    protected void onMalformedMessage(final RuntimeException ex) {
-        logger.log(Level.WARNING, "Malformed Coinbase L2 market-data message; dropping FIX tick", ex);
-    }
 }

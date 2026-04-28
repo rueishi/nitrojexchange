@@ -51,8 +51,9 @@ import java.util.function.LongSupplier;
  * {@link #onBalanceQueryRequest(BalanceQueryRequestDecoder)}, and a dedicated
  * rest-poller thread runs {@link #run()} until stopped. Design intent: copy SBE
  * request fields at enqueue time, keep HTTP and JSON work off the egress thread,
- * and publish a {@code -1} balance sentinel on transport failure so cluster
- * recovery can fail closed.</p>
+ * perform one cold-path retry for transient transport failure, and publish a
+ * {@code -1} balance sentinel when HTTP, JSON, or retry exhaustion prevents a
+ * trusted balance response so cluster recovery can fail closed.</p>
  */
 public final class CoinbaseRestPoller implements Runnable, OrderCommandHandler.BalanceQuerySink {
     static final String ACCOUNTS_PATH = "/accounts";
@@ -132,9 +133,10 @@ public final class CoinbaseRestPoller implements Runnable, OrderCommandHandler.B
      * Runs the serialized REST polling loop.
      *
      * <p>The loop waits for queued balance requests, performs each HTTP call to
-     * completion, and sleeps according to {@link RestConfig#pollIntervalMs()} only
-     * when idle. Interruptions request shutdown while preserving the interrupt
-     * flag for gateway lifecycle code.</p>
+     * completion, retries transport failure once on the same cold poller thread,
+     * and sleeps according to {@link RestConfig#pollIntervalMs()} only when idle.
+     * Interruptions request shutdown while preserving the interrupt flag for
+     * gateway lifecycle code.</p>
      */
     @Override
     public void run() {
@@ -193,7 +195,7 @@ public final class CoinbaseRestPoller implements Runnable, OrderCommandHandler.B
 
     private void process(final BalanceRequest request) {
         try {
-            final HttpResponse<String> response = httpTransport.send(buildAuthenticatedRequest());
+            final HttpResponse<String> response = sendWithRetry(buildAuthenticatedRequest());
             if (response.statusCode() != 200) {
                 publishFailure(request);
                 return;
@@ -204,6 +206,14 @@ public final class CoinbaseRestPoller implements Runnable, OrderCommandHandler.B
                 Thread.currentThread().interrupt();
             }
             publishFailure(request);
+        }
+    }
+
+    private HttpResponse<String> sendWithRetry(final HttpRequest request) throws IOException, InterruptedException {
+        try {
+            return httpTransport.send(request);
+        } catch (final IOException ex) {
+            return httpTransport.send(request);
         }
     }
 
@@ -287,12 +297,12 @@ public final class CoinbaseRestPoller implements Runnable, OrderCommandHandler.B
         }
     }
 
-    private static final class DisruptorResponsePublisher implements ResponsePublisher {
+    static final class DisruptorResponsePublisher implements ResponsePublisher {
         private final GatewayDisruptor disruptor;
         private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
         private final BalanceQueryResponseEncoder responseEncoder = new BalanceQueryResponseEncoder();
 
-        private DisruptorResponsePublisher(final GatewayDisruptor disruptor) {
+        DisruptorResponsePublisher(final GatewayDisruptor disruptor) {
             this.disruptor = Objects.requireNonNull(disruptor, "disruptor");
         }
 

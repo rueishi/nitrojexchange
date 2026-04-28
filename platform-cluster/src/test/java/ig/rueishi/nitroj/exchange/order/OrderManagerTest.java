@@ -50,7 +50,7 @@ final class OrderManagerTest {
 
         final OrderState order = manager.getOrder(CL_ORD_ID);
         assertThat(order.status).isEqualTo(OrderStatus.NEW);
-        assertThat(order.venueOrderId).isEqualTo("venue-1001");
+        assertThat(order.venueOrderId()).isEqualTo("venue-1001");
         assertThat(order.firstAckNanos).isEqualTo(1_000L);
     }
 
@@ -408,7 +408,7 @@ final class OrderManagerTest {
         final OrderManagerImpl restored = manager();
         restored.loadSnapshotFragments(manager.snapshotFragments());
 
-        assertThat(restored.getOrder(CL_ORD_ID).venueOrderId).isEqualTo("venue-1001");
+        assertThat(restored.getOrder(CL_ORD_ID).venueOrderId()).isEqualTo("venue-1001");
     }
 
     @Test

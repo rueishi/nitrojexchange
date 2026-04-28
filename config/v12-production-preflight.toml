@@ -1,0 +1,50 @@
+# V12 production-connectivity preflight evidence matrix.
+#
+# Real Coinbase QA/UAT and production connectivity claims are blocked until
+# every gate below has an owner, automated evidence where practical, and a
+# release artifact link. Manual checks are allowed only for infrastructure
+# controls that cannot be exercised inside the local unit/e2e suite.
+
+[security]
+secrets_source = "approved secret manager or injected CI/CD environment"
+credential_rotation_required = true
+environment_separation_required = true
+required_evidence = [
+  "credential resolver test",
+  "credential rotation rehearsal",
+  "no production secret in repository scan"
+]
+
+[financial_correctness]
+required_evidence = [
+  "kill switch reject test",
+  "rejected order does not update portfolio test",
+  "disconnect reconnect recovery test",
+  "stale market data test",
+  "self trade prevention test",
+  "balance position order execution reconciliation test"
+]
+
+[operations]
+required_evidence = [
+  "monitoring dashboard link",
+  "alert routing test",
+  "failover rehearsal",
+  "disaster recovery rehearsal",
+  "deployment checklist",
+  "rollback checklist"
+]
+
+[qa_uat_gate]
+required_commands = [
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew clean",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew check",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew e2eTest",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmh",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmhLatencyReport"
+]
+release_artifacts = [
+  "unit integration simulator live-wire deterministic replay reports",
+  "benchmark JSON and latency report",
+  "security operations financial correctness preflight signoff"
+]

@@ -131,10 +131,10 @@ final class MarketDataHandlerTest {
     }
 
     /**
-     * Verifies unknown symbols are warned and discarded without publishing.
+     * Verifies unknown symbols are counted and discarded without publishing.
      */
     @Test
-    void unknownSymbol_notPublishedToDisruptor_warnLogged() {
+    void unknownSymbol_notPublishedToDisruptor_counterIncremented() {
         final RecordingLogger logger = new RecordingLogger();
         final Harness harness = Harness.notStarted(4, new TrackingRegistry(), logger);
 
@@ -142,8 +142,8 @@ final class MarketDataHandlerTest {
             "269=0", "270=1", "271=1"), 0, currentLength);
 
         assertThat(harness.disruptor.remainingCapacity()).isEqualTo(4);
-        assertThat(logger.warnings).hasSize(1);
-        assertThat(logger.warnings.getFirst()).contains("XRP-USD");
+        assertThat(harness.normalizer.unknownSymbolDropCount()).isEqualTo(1);
+        assertThat(logger.warnings).isEmpty();
         harness.close();
     }
 
@@ -278,6 +278,7 @@ final class MarketDataHandlerTest {
     private static final class Harness implements AutoCloseable {
         private final GatewayDisruptor disruptor;
         private final MarketDataHandler handler;
+        private final CoinbaseL2MarketDataNormalizer normalizer;
         private final CountDownLatch latch;
         private final List<UnsafeBuffer> payloads = new ArrayList<>();
         private int length;
@@ -296,11 +297,12 @@ final class MarketDataHandlerTest {
                 payloads.add(new UnsafeBuffer(copy));
                 latch.countDown();
             });
+            normalizer = new CoinbaseL2MarketDataNormalizer(registry, disruptor, logger);
             handler = new MarketDataHandler(
                 registry,
                 disruptor,
                 logger,
-                new CoinbaseL2MarketDataNormalizer(registry, disruptor, logger));
+                normalizer);
             registry.registerSession(VENUE_ID, SESSION_ID);
             if (start) {
                 disruptor.start();

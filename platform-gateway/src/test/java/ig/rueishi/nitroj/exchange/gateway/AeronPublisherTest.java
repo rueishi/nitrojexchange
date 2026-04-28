@@ -26,6 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * offer function simulates Aeron return codes without starting a media driver.</p>
  */
 final class AeronPublisherTest {
+    private static final byte[] VENUE_ORDER_ID = {'v'};
+    private static final byte[] EXEC_ID = {'e'};
+
     /** Verifies fill events spin through back-pressure until accepted and do not increment drops. */
     @Test
     void fillMessage_aeronSlow_spinsIndefinitely_noDrops() throws Exception {
@@ -56,6 +59,23 @@ final class AeronPublisherTest {
 
         assertThat(attempts.get()).isPositive();
         assertThat(drops.get()).isEqualTo(1);
+    }
+
+    /** Verifies accepted non-fill events return without incrementing the drop counter. */
+    @Test
+    void nonFillMessage_aeronAccepts_counterNotIncremented() throws Exception {
+        final GatewaySlot slot = marketDataSlot();
+        final AtomicInteger attempts = new AtomicInteger();
+        final AtomicInteger drops = new AtomicInteger();
+        final AeronPublisher publisher = new AeronPublisher((buffer, offset, length) -> {
+            attempts.incrementAndGet();
+            return 42L;
+        }, drops::incrementAndGet);
+
+        publisher.onEvent(slot, 1L, true);
+
+        assertThat(attempts.get()).isEqualTo(1);
+        assertThat(drops.get()).isZero();
     }
 
     /** Verifies slots are reset even when Aeron never accepts a non-fill message. */
@@ -111,8 +131,8 @@ final class AeronPublisherTest {
             .exchangeTimestampNanos(1)
             .fixSeqNum(1)
             .isFinal(BooleanType.TRUE)
-            .putVenueOrderId(new byte[] {'v'}, 0, 1)
-            .putExecId(new byte[] {'e'}, 0, 1);
+            .putVenueOrderId(VENUE_ORDER_ID, 0, VENUE_ORDER_ID.length)
+            .putExecId(EXEC_ID, 0, EXEC_ID.length);
         slot.length = MessageHeaderEncoder.ENCODED_LENGTH + encoder.encodedLength();
         return slot;
     }

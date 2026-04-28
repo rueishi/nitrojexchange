@@ -60,6 +60,34 @@ final class RiskEngineTest {
     }
 
     @Test
+    void boundaryValues_equalLimitsApproved() {
+        final RiskEngineImpl engine = connectedEngine(config(100));
+
+        assertThat(check(engine, scaled(100), scaled(10))).isSameAs(RiskDecision.APPROVED);
+        engine.resetAll();
+        engine.setVenueConnected(VENUE, true);
+        engine.updatePositionSnapshot(VENUE, INSTRUMENT, scaled(90));
+        assertThat(check(engine, scaled(100), scaled(10))).isSameAs(RiskDecision.APPROVED);
+        engine.resetAll();
+        engine.setVenueConnected(VENUE, true);
+        assertThat(check(engine, scaled(100_000), scaled(10))).isSameAs(RiskDecision.APPROVED);
+    }
+
+    @Test
+    void deterministicRejectCodes_arePrimitiveAndStable() {
+        assertThat(RiskDecision.APPROVED.rejectCode()).isZero();
+        assertThat(RiskDecision.REJECT_RECOVERY.rejectCode()).isEqualTo((byte)1);
+        assertThat(RiskDecision.REJECT_KILL_SWITCH.rejectCode()).isEqualTo((byte)2);
+        assertThat(RiskDecision.REJECT_ORDER_TOO_LARGE.rejectCode()).isEqualTo((byte)3);
+        assertThat(RiskDecision.REJECT_MAX_LONG.rejectCode()).isEqualTo((byte)4);
+        assertThat(RiskDecision.REJECT_MAX_SHORT.rejectCode()).isEqualTo((byte)5);
+        assertThat(RiskDecision.REJECT_MAX_NOTIONAL.rejectCode()).isEqualTo((byte)6);
+        assertThat(RiskDecision.REJECT_RATE_LIMIT.rejectCode()).isEqualTo((byte)7);
+        assertThat(RiskDecision.REJECT_DAILY_LOSS.rejectCode()).isEqualTo((byte)8);
+        assertThat(RiskDecision.REJECT_VENUE_NOT_CONNECTED.rejectCode()).isEqualTo((byte)9);
+    }
+
+    @Test
     void maxLongPosition_rejectsProjectedLongBreach() {
         final RiskEngineImpl engine = connectedEngine(config(100));
         engine.updatePositionSnapshot(VENUE, INSTRUMENT, scaled(99));

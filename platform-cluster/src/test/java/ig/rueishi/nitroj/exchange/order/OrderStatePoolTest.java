@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ig.rueishi.nitroj.exchange.common.OrderStatus;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * Unit coverage for the order state warm pool required before OrderManager is
  * introduced.
@@ -111,11 +113,11 @@ final class OrderStatePoolTest {
     @Test
     void orderStateReset_venueOrderIdNull() {
         final OrderState order = new OrderState();
-        order.venueOrderId = "venue-order-123";
+        setVenueOrderId(order, "venue-order-123");
 
         order.reset();
 
-        assertThat(order.venueOrderId).isNull();
+        assertThat(order.venueOrderId()).isNull();
     }
 
     /**
@@ -127,7 +129,7 @@ final class OrderStatePoolTest {
     private static void dirty(final OrderState order) {
         order.clOrdId = 1L;
         order.venueClOrdId = 2L;
-        order.venueOrderId = "venue-order-123";
+        setVenueOrderId(order, "venue-order-123");
         order.venueId = 3;
         order.instrumentId = 4;
         order.strategyId = 5;
@@ -159,7 +161,7 @@ final class OrderStatePoolTest {
     private static void assertReset(final OrderState order) {
         assertThat(order.clOrdId).isZero();
         assertThat(order.venueClOrdId).isZero();
-        assertThat(order.venueOrderId).isNull();
+        assertThat(order.venueOrderId()).isNull();
         assertThat(order.venueId).isZero();
         assertThat(order.instrumentId).isZero();
         assertThat(order.strategyId).isZero();
@@ -179,5 +181,11 @@ final class OrderStatePoolTest {
         assertThat(order.exchangeTimestampNanos).isZero();
         assertThat(order.rejectCode).isZero();
         assertThat(order.replacedByClOrdId).isZero();
+    }
+
+    private static void setVenueOrderId(final OrderState order, final String value) {
+        final byte[] bytes = value.getBytes(StandardCharsets.US_ASCII);
+        System.arraycopy(bytes, 0, order.venueOrderIdBytes, 0, bytes.length);
+        order.venueOrderIdLength = bytes.length;
     }
 }

@@ -6,6 +6,7 @@ import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.registry.IdRegistry;
+import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.CountersManager;
 import org.junit.jupiter.api.Test;
@@ -21,14 +22,14 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit coverage for TASK-010 ExecutionReport normalization.
+ * Unit coverage for ExecutionReport normalization.
  *
  * <p>Responsibility: verify that {@link ExecutionHandler} maps FIX MsgType
  * {@code 8} into generated SBE {@link ExecutionEventDecoder} payloads with the
  * exact ExecType, finality, reject-code, ID, timestamp, and variable-length
- * fields required by the task card. Role in system: these tests lock down the
- * gateway execution ingress path before later cluster tasks apply order-state
- * transitions and portfolio updates.</p>
+ * fields required by the task cards. TASK-206 additionally verifies that symbol
+ * lookup and execution identities stay as bounded byte ranges until the
+ * generated SBE encoder copies them into the gateway handoff slot.</p>
  *
  * <p>Relationships: tests use the real {@link GatewayDisruptor} and generated
  * SBE decoder classes, while a minimal {@link IdRegistry} provides deterministic
@@ -68,9 +69,9 @@ final class ExecutionHandlerTest {
     /** Verifies fills with remaining quantity are not final. */
     @Test
     void execTypeFill_partialFill_isFinalFalse() throws Exception {
-        final ExecutionEventDecoder event = publish(base("150=F", "151=0.5", "31=65000", "32=0.1"));
+        final ExecutionEventDecoder event = publish(base("150=1", "151=0.5", "31=65000", "32=0.1"));
 
-        assertThat(event.execType()).isEqualTo(ExecType.FILL);
+        assertThat(event.execType()).isEqualTo(ExecType.PARTIAL_FILL);
         assertThat(event.isFinal()).isEqualTo(BooleanType.FALSE);
     }
 
@@ -176,12 +177,81 @@ final class ExecutionHandlerTest {
             .isEqualTo(Long.MAX_VALUE);
     }
 
+    /** Verifies the normal symbol lookup path uses DirectBuffer ranges instead of allocating a String. */
+    @Test
+    void symbolLookup_usesDirectBufferRange() throws Exception {
+        final TrackingRegistry registry = new TrackingRegistry();
+        final Harness harness = Harness.started(1, registry);
+
+        harness.handler.onMessageForTest(SESSION_ID, fix(base("150=0", "151=1")), 0, currentLength);
+
+        harness.onlyEvent();
+        assertThat(registry.directInstrumentLookups).isEqualTo(1);
+        assertThat(registry.charSequenceInstrumentLookups).isZero();
+        harness.close();
+    }
+
+    /** Verifies tag 37 is copied into the generated SBE payload as a compact byte range. */
+    @Test
+    void venueOrderId_compactIdentityHandoff_preservesBytes() throws Exception {
+        assertThat(venueOrderId(publish(base("37=venue-ABC-123", "150=0", "151=1")))).isEqualTo("venue-ABC-123");
+    }
+
+    /** Verifies tag 17 is copied into the generated SBE payload as a compact byte range. */
+    @Test
+    void execId_compactIdentityHandoff_preservesBytes() throws Exception {
+        assertThat(execId(publish(base("17=exec-ABC-123", "150=0", "151=1")))).isEqualTo("exec-ABC-123");
+    }
+
+    /** Verifies reports with unknown symbols are safely dropped. */
+    @Test
+    void unknownSymbol_safeDrop_noEvent() throws Exception {
+        assertNoEvent(base("55=UNKNOWN", "150=0", "151=1"));
+    }
+
+    /** Verifies malformed numeric fields are safely dropped instead of constructing an exception. */
+    @Test
+    void malformedClOrdId_safeDrop_noEvent() throws Exception {
+        assertNoEvent(baseWithClOrdId("bad-id", "150=0", "151=1"));
+    }
+
+    /** Verifies malformed timestamps are safely dropped. */
+    @Test
+    void malformedTimestamp_safeDrop_noEvent() throws Exception {
+        assertNoEvent(base("150=0", "151=1", "60=20260424-bad"));
+    }
+
+    /** Verifies unknown ExecType values are safely dropped. */
+    @Test
+    void malformedExecType_safeDrop_noEvent() throws Exception {
+        assertNoEvent(base("150=Z", "151=1"));
+    }
+
+    /** Verifies oversized venue order IDs are rejected at the gateway boundary. */
+    @Test
+    void oversizedVenueOrderId_safeDrop_noEvent() throws Exception {
+        assertNoEvent(base("37=" + "V".repeat(65), "150=0", "151=1"));
+    }
+
+    /** Verifies oversized execution IDs are rejected at the gateway boundary. */
+    @Test
+    void oversizedExecId_safeDrop_noEvent() throws Exception {
+        assertNoEvent(base("17=" + "E".repeat(65), "150=0", "151=1"));
+    }
+
     private static ExecutionEventDecoder publish(final String[] fields) throws Exception {
         final Harness harness = Harness.started(1, new TrackingRegistry());
         harness.handler.onMessageForTest(SESSION_ID, fix(fields), 0, currentLength);
         final ExecutionEventDecoder event = harness.onlyEvent();
         harness.close();
         return event;
+    }
+
+    private static void assertNoEvent(final String[] fields) throws Exception {
+        final Harness harness = Harness.started(0, new TrackingRegistry());
+        harness.handler.onMessageForTest(SESSION_ID, fix(fields), 0, currentLength);
+        harness.noEvent();
+        harness.close();
     }
 
     private static String[] base(final String... overrides) {
@@ -264,6 +334,11 @@ final class ExecutionHandlerTest {
             return event;
         }
 
+        private void noEvent() throws Exception {
+            assertThat(latch.await(100, TimeUnit.MILLISECONDS)).isTrue();
+            assertThat(payloads).isEmpty();
+        }
+
         @Override
         public void close() {
             disruptor.close();
@@ -272,6 +347,8 @@ final class ExecutionHandlerTest {
 
     private static final class TrackingRegistry implements IdRegistry {
         private long firstInstrumentLookupNanos = Long.MAX_VALUE;
+        private int directInstrumentLookups;
+        private int charSequenceInstrumentLookups;
 
         @Override
         public int venueId(final long sessionId) {
@@ -281,8 +358,16 @@ final class ExecutionHandlerTest {
 
         @Override
         public int instrumentId(final CharSequence symbol) {
+            charSequenceInstrumentLookups++;
             firstInstrumentLookupNanos = Math.min(firstInstrumentLookupNanos, System.nanoTime());
             return "BTC-USD".contentEquals(symbol) ? INSTRUMENT_ID : 0;
+        }
+
+        @Override
+        public int instrumentId(final DirectBuffer buffer, final int offset, final int length) {
+            directInstrumentLookups++;
+            firstInstrumentLookupNanos = Math.min(firstInstrumentLookupNanos, System.nanoTime());
+            return asciiEquals(buffer, offset, length, "BTC-USD") ? INSTRUMENT_ID : 0;
         }
 
         @Override
@@ -298,6 +383,23 @@ final class ExecutionHandlerTest {
         @Override
         public void registerSession(final int venueId, final long sessionId) {
             // The fake registry resolves venue directly from the session id.
+        }
+
+        private static boolean asciiEquals(
+            final DirectBuffer buffer,
+            final int offset,
+            final int length,
+            final String expected) {
+
+            if (length != expected.length()) {
+                return false;
+            }
+            for (int i = 0; i < length; i++) {
+                if ((char)buffer.getByte(offset + i) != expected.charAt(i)) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 }

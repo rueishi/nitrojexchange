@@ -1,5 +1,7 @@
 package ig.rueishi.nitroj.exchange.order;
 
+import ig.rueishi.nitroj.exchange.common.BoundedTextIdentity;
+import ig.rueishi.nitroj.exchange.common.BoundedTextIdentityStore;
 import ig.rueishi.nitroj.exchange.common.OrderStatus;
 import ig.rueishi.nitroj.exchange.common.ScaledMath;
 import ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlay;
@@ -18,15 +20,14 @@ import io.aeron.ExclusivePublication;
 import io.aeron.Image;
 import io.aeron.cluster.service.Cluster;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
-import org.agrona.collections.ObjectHashSet;
 import org.agrona.concurrent.UnsafeBuffer;
 
 /**
@@ -39,10 +40,12 @@ import org.agrona.concurrent.UnsafeBuffer;
  * fill reports return {@code true} so the router can immediately fan out to
  * portfolio and risk components in the required order.</p>
  *
- * <p>The implementation also owns duplicate {@code execId} detection. FIX tag 17
- * is a variable-length string, so the manager stores it in a bounded
- * {@link ObjectHashSet} plus ring buffer. This keeps memory bounded while still
- * preventing duplicate execution reports in the recent replay window.</p>
+ * <p>The implementation also owns duplicate {@code execId} detection. V12 stores
+ * execution IDs in a fixed-capacity {@link BoundedTextIdentityStore} plus a ring
+ * of store slots. Venue order IDs are copied into the reusable byte storage held
+ * by {@link OrderState}. Snapshot and cancel command encoders write those bytes
+ * directly, so normal order state transitions avoid per-event {@code String},
+ * byte-array, and identity-object allocation.</p>
  */
 public final class OrderManagerImpl implements OrderManager {
     static final int EXEC_ID_WINDOW_SIZE = 10_000;
@@ -51,8 +54,10 @@ public final class OrderManagerImpl implements OrderManager {
     private final OrderStatePool pool;
     private final OrderMessageSink commandSink;
     private final LongSupplier fallbackClusterTimeMicros;
-    private final ObjectHashSet<String> seenExecIds = new ObjectHashSet<>(EXEC_ID_WINDOW_SIZE * 2);
-    private final String[] execIdWindow = new String[EXEC_ID_WINDOW_SIZE];
+    private final BoundedTextIdentityStore seenExecIds = new BoundedTextIdentityStore(
+        EXEC_ID_WINDOW_SIZE * 2,
+        BoundedTextIdentity.DEFAULT_MAX_LENGTH);
+    private final int[] execIdWindowSlots = new int[EXEC_ID_WINDOW_SIZE];
     private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
     private final MessageHeaderDecoder headerDecoder = new MessageHeaderDecoder();
     private final CancelOrderCommandEncoder cancelOrderEncoder = new CancelOrderCommandEncoder();
@@ -61,6 +66,10 @@ public final class OrderManagerImpl implements OrderManager {
     private final UnsafeBuffer commandBuffer = new UnsafeBuffer(new byte[512]);
     private final UnsafeBuffer snapshotBuffer = new UnsafeBuffer(new byte[512]);
     private final UnsafeBuffer countBuffer = new UnsafeBuffer(new byte[Integer.BYTES]);
+    private final UnsafeBuffer identityScratchBuffer =
+        new UnsafeBuffer(new byte[BoundedTextIdentity.DEFAULT_MAX_LENGTH]);
+    private final UnsafeBuffer execIdScratchBuffer =
+        new UnsafeBuffer(new byte[BoundedTextIdentity.DEFAULT_MAX_LENGTH]);
     private Cluster cluster;
     private int execIdHead;
     private long nextGeneratedClOrdId = 1L;
@@ -79,6 +88,7 @@ public final class OrderManagerImpl implements OrderManager {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.commandSink = Objects.requireNonNull(commandSink, "commandSink");
         this.fallbackClusterTimeMicros = Objects.requireNonNull(fallbackClusterTimeMicros, "fallbackClusterTimeMicros");
+        Arrays.fill(execIdWindowSlots, BoundedTextIdentityStore.NOT_FOUND);
     }
 
     /**
@@ -133,8 +143,8 @@ public final class OrderManagerImpl implements OrderManager {
      */
     @Override
     public boolean onExecution(final ExecutionEventDecoder decoder) {
-        final String execId = readExecId(decoder);
-        if (!execId.isEmpty() && isDuplicateExecId(execId)) {
+        final int execIdLength = copyExecId(decoder);
+        if (execIdLength > 0 && isDuplicateExecId(execIdLength)) {
             duplicateExecutionReportCount++;
             return false;
         }
@@ -273,9 +283,7 @@ public final class OrderManagerImpl implements OrderManager {
         }
         liveOrders.clear();
         seenExecIds.clear();
-        for (int i = 0; i < execIdWindow.length; i++) {
-            execIdWindow[i] = null;
-        }
+        Arrays.fill(execIdWindowSlots, BoundedTextIdentityStore.NOT_FOUND);
         execIdHead = 0;
         invalidTransitionCount = 0L;
         duplicateExecutionReportCount = 0L;
@@ -373,7 +381,6 @@ public final class OrderManagerImpl implements OrderManager {
     }
 
     int encodeSnapshot(final OrderState order, final MutableDirectBuffer buffer, final int offset) {
-        final byte[] venueOrderId = stringBytes(order.venueOrderId);
         snapshotEncoder
             .wrapAndApplyHeader(buffer, offset, headerEncoder)
             .clOrdId(order.clOrdId)
@@ -390,7 +397,7 @@ public final class OrderManagerImpl implements OrderManager {
             .leavesQtyScaled(order.leavesQtyScaled)
             .avgFillPriceScaled(order.avgFillPriceScaled)
             .createdClusterTime(order.createdClusterTime)
-            .putVenueOrderId(venueOrderId, 0, venueOrderId.length);
+            .putVenueOrderId(order.venueOrderIdBytes, 0, order.venueOrderIdLength);
         return MessageHeaderEncoder.ENCODED_LENGTH + snapshotEncoder.encodedLength();
     }
 
@@ -411,7 +418,7 @@ public final class OrderManagerImpl implements OrderManager {
         order.leavesQtyScaled = snapshotDecoder.leavesQtyScaled();
         order.avgFillPriceScaled = snapshotDecoder.avgFillPriceScaled();
         order.createdClusterTime = snapshotDecoder.createdClusterTime();
-        order.venueOrderId = readSnapshotVenueOrderId(snapshotDecoder);
+        copySnapshotVenueOrderId(snapshotDecoder, order);
         liveOrders.put(order.clOrdId, order);
         if (order.clOrdId >= nextGeneratedClOrdId) {
             nextGeneratedClOrdId = order.clOrdId + 1L;
@@ -445,7 +452,7 @@ public final class OrderManagerImpl implements OrderManager {
         return switch (execType) {
             case NEW -> {
                 order.status = OrderStatus.NEW;
-                order.venueOrderId = readVenueOrderId(decoder);
+                copyVenueOrderId(decoder, order);
                 order.firstAckNanos = decoder.ingressTimestampNanos();
                 order.lastUpdateNanos = decoder.ingressTimestampNanos();
                 yield false;
@@ -562,10 +569,7 @@ public final class OrderManagerImpl implements OrderManager {
             : ScaledMath.vwap(order.avgFillPriceScaled, previousCumQty, fillPrice, fillQty);
         order.exchangeTimestampNanos = decoder.exchangeTimestampNanos();
         order.lastUpdateNanos = decoder.ingressTimestampNanos();
-        final String venueOrderId = readVenueOrderId(decoder);
-        if (!venueOrderId.isEmpty()) {
-            order.venueOrderId = venueOrderId;
-        }
+        copyVenueOrderIdIfPresent(decoder, order);
     }
 
     private void releaseTerminal(final OrderState order) {
@@ -573,22 +577,22 @@ public final class OrderManagerImpl implements OrderManager {
         pool.release(order);
     }
 
-    private boolean isDuplicateExecId(final String execId) {
-        if (seenExecIds.contains(execId)) {
+    private boolean isDuplicateExecId(final int execIdLength) {
+        if (seenExecIds.contains(execIdScratchBuffer, 0, execIdLength)) {
             return true;
         }
-        final String oldest = execIdWindow[execIdHead];
-        if (oldest != null) {
-            seenExecIds.remove(oldest);
+        final int oldest = execIdWindowSlots[execIdHead];
+        if (oldest >= 0) {
+            final int length = seenExecIds.copySlotTo(oldest, identityScratchBuffer.byteArray(), 0);
+            seenExecIds.remove(identityScratchBuffer, 0, length);
         }
-        execIdWindow[execIdHead] = execId;
-        seenExecIds.add(execId);
+        final int slot = seenExecIds.put(execIdScratchBuffer, 0, execIdLength);
+        execIdWindowSlots[execIdHead] = slot;
         execIdHead = (execIdHead + 1) % EXEC_ID_WINDOW_SIZE;
         return false;
     }
 
     private void publishCancel(final OrderState order) {
-        final byte[] venueOrderId = stringBytes(order.venueOrderId);
         cancelOrderEncoder
             .wrapAndApplyHeader(commandBuffer, 0, headerEncoder)
             .cancelClOrdId(nextClOrdId())
@@ -597,7 +601,7 @@ public final class OrderManagerImpl implements OrderManager {
             .instrumentId(order.instrumentId)
             .side(Side.get(order.side))
             .originalQtyScaled(order.qtyScaled)
-            .putVenueOrderId(venueOrderId, 0, venueOrderId.length);
+            .putVenueOrderId(order.venueOrderIdBytes, 0, order.venueOrderIdLength);
         commandSink.offer(commandBuffer, 0, MessageHeaderEncoder.ENCODED_LENGTH + cancelOrderEncoder.encodedLength());
     }
 
@@ -605,30 +609,48 @@ public final class OrderManagerImpl implements OrderManager {
         return execType == ExecType.FILL || execType == ExecType.PARTIAL_FILL;
     }
 
-    private static String readVenueOrderId(final ExecutionEventDecoder decoder) {
-        decoder.sbeRewind();
-        final byte[] bytes = new byte[decoder.venueOrderIdLength()];
-        decoder.getVenueOrderId(bytes, 0, bytes.length);
-        return new String(bytes, StandardCharsets.US_ASCII);
-    }
-
-    private static String readExecId(final ExecutionEventDecoder decoder) {
+    private int copyExecId(final ExecutionEventDecoder decoder) {
         decoder.sbeRewind();
         decoder.skipVenueOrderId();
-        final byte[] bytes = new byte[decoder.execIdLength()];
-        decoder.getExecId(bytes, 0, bytes.length);
-        return new String(bytes, StandardCharsets.US_ASCII);
+        final int length = decoder.execIdLength();
+        if (length <= 0 || length > BoundedTextIdentity.DEFAULT_MAX_LENGTH) {
+            decoder.skipExecId();
+            return 0;
+        }
+        decoder.getExecId(execIdScratchBuffer, 0, length);
+        return length;
     }
 
-    private static String readSnapshotVenueOrderId(final OrderStateSnapshotDecoder decoder) {
+    private void copyVenueOrderId(final ExecutionEventDecoder decoder, final OrderState order) {
         decoder.sbeRewind();
-        final byte[] bytes = new byte[decoder.venueOrderIdLength()];
-        decoder.getVenueOrderId(bytes, 0, bytes.length);
-        return new String(bytes, StandardCharsets.US_ASCII);
+        final int length = decoder.venueOrderIdLength();
+        if (length <= 0 || length > BoundedTextIdentity.DEFAULT_MAX_LENGTH) {
+            decoder.skipVenueOrderId();
+            order.venueOrderIdLength = 0;
+            return;
+        }
+        order.venueOrderIdLength = decoder.getVenueOrderId(order.venueOrderIdBytes, 0, length);
     }
 
-    private static byte[] stringBytes(final String value) {
-        return value == null ? new byte[0] : value.getBytes(StandardCharsets.US_ASCII);
+    private void copyVenueOrderIdIfPresent(final ExecutionEventDecoder decoder, final OrderState order) {
+        decoder.sbeRewind();
+        final int length = decoder.venueOrderIdLength();
+        if (length <= 0 || length > BoundedTextIdentity.DEFAULT_MAX_LENGTH) {
+            decoder.skipVenueOrderId();
+            return;
+        }
+        order.venueOrderIdLength = decoder.getVenueOrderId(order.venueOrderIdBytes, 0, length);
+    }
+
+    private void copySnapshotVenueOrderId(final OrderStateSnapshotDecoder decoder, final OrderState order) {
+        decoder.sbeRewind();
+        final int length = decoder.venueOrderIdLength();
+        if (length <= 0 || length > BoundedTextIdentity.DEFAULT_MAX_LENGTH) {
+            decoder.skipVenueOrderId();
+            order.venueOrderIdLength = 0;
+            return;
+        }
+        order.venueOrderIdLength = decoder.getVenueOrderId(order.venueOrderIdBytes, 0, length);
     }
 
     private static byte[] copy(final DirectBuffer buffer, final int offset, final int length) {

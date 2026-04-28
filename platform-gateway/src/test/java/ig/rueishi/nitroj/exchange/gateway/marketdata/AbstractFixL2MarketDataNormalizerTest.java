@@ -97,6 +97,8 @@ final class AbstractFixL2MarketDataNormalizerTest {
         assertThat(normalizer.published).isEmpty();
         assertThat(normalizer.unknownSymbols).containsExactly("ETH-USD");
         assertThat(normalizer.malformedCount).isEqualTo(1);
+        assertThat(normalizer.unknownSymbolDropCount()).isEqualTo(1);
+        assertThat(normalizer.malformedMessageDropCount()).isEqualTo(1);
     }
 
     @Test
@@ -157,6 +159,7 @@ final class AbstractFixL2MarketDataNormalizerTest {
             copy.instrumentId = context.instrumentId;
             copy.fixSeqNum = context.fixSeqNum;
             copy.symbol = context.symbol;
+            copy.setSymbolRange(context.symbolBuffer, context.symbolOffset, context.symbolLength);
             copy.entryType = context.entryType;
             copy.updateAction = context.updateAction;
             copy.priceScaled = context.priceScaled;
@@ -169,11 +172,19 @@ final class AbstractFixL2MarketDataNormalizerTest {
 
         @Override
         protected void onUnknownSymbol(final String symbol) {
+            super.onUnknownSymbol(symbol);
             unknownSymbols.add(symbol);
         }
 
         @Override
+        protected void onUnknownSymbol(final DirectBuffer buffer, final int valueStart, final int valueEnd) {
+            super.onUnknownSymbol(buffer, valueStart, valueEnd);
+            unknownSymbols.add(buffer.getStringWithoutLengthAscii(valueStart, valueEnd - valueStart));
+        }
+
+        @Override
         protected void onMalformedMessage(final RuntimeException ex) {
+            super.onMalformedMessage(ex);
             malformedCount++;
         }
     }

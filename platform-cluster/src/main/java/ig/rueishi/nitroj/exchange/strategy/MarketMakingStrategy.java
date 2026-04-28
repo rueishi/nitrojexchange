@@ -41,8 +41,11 @@ public final class MarketMakingStrategy implements Strategy {
     private static final long WIDE_SPREAD_COOLDOWN_MICROS = 5_000_000L;
     private static final long REJECTION_COOLDOWN_MICROS = 5_000_000L;
     private static final int COMMAND_BUFFER_BYTES = 512;
+    private static final byte[] EMPTY_VENUE_ORDER_ID = new byte[0];
 
     private final MarketMakingConfig config;
+    private final int[] subscribedInstrumentIds;
+    private final int[] activeVenueIds;
     private InternalMarketView marketView;
     private RiskEngine riskEngine;
     private OrderManager orderManager;
@@ -70,6 +73,8 @@ public final class MarketMakingStrategy implements Strategy {
 
     public MarketMakingStrategy(final MarketMakingConfig config) {
         this.config = Objects.requireNonNull(config, "config");
+        subscribedInstrumentIds = new int[] {config.instrumentId()};
+        activeVenueIds = new int[] {config.venueId()};
     }
 
     @Override
@@ -218,8 +223,8 @@ public final class MarketMakingStrategy implements Strategy {
             lastKnownPosition = netQtyScaled;
         }
     }
-    @Override public int[] subscribedInstrumentIds() { return new int[]{config.instrumentId()}; }
-    @Override public int[] activeVenueIds() { return new int[]{config.venueId()}; }
+    @Override public int[] subscribedInstrumentIds() { return subscribedInstrumentIds; }
+    @Override public int[] activeVenueIds() { return activeVenueIds; }
     @Override public void shutdown() { cancelLiveQuotes(); }
     @Override public int strategyId() { return Ids.STRATEGY_MARKET_MAKING; }
 
@@ -280,7 +285,6 @@ public final class MarketMakingStrategy implements Strategy {
 
     private void submitCancel(final long origClOrdId, final Side side, final long originalQtyScaled) {
         final long cancelClOrdId = cluster == null ? 0L : cluster.logPosition();
-        final byte[] emptyVenueOrderId = new byte[0];
         cancelOrderEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
             .cancelClOrdId(cancelClOrdId)
             .origClOrdId(origClOrdId)
@@ -288,7 +292,7 @@ public final class MarketMakingStrategy implements Strategy {
             .instrumentId(config.instrumentId())
             .side(side)
             .originalQtyScaled(originalQtyScaled)
-            .putVenueOrderId(emptyVenueOrderId, 0, 0);
+            .putVenueOrderId(EMPTY_VENUE_ORDER_ID, 0, 0);
         offer(MessageHeaderEncoder.ENCODED_LENGTH + cancelOrderEncoder.encodedLength());
     }
 

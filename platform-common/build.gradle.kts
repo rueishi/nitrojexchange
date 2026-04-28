@@ -34,6 +34,7 @@ dependencies {
     implementation("org.eclipse.collections:eclipse-collections:11.1.0")
     implementation("org.hdrhistogram:HdrHistogram:2.2.2")
     implementation("com.electronwill.night-config:toml:3.6.7")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     "sbeCodegen"("uk.co.real-logic:sbe-tool:$sbeVersion")
 }
 

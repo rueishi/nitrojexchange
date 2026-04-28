@@ -11,6 +11,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 @Fork(1)
 @State(Scope.Thread)
 public class OwnLiquidityBenchmark {
+    private static final int OPS = 65_536;
     private OwnOrderOverlay overlay;
     private ExternalLiquidityView externalLiquidityView;
 
@@ -36,13 +38,34 @@ public class OwnLiquidityBenchmark {
     }
 
     @Benchmark
+    @OperationsPerInvocation(OPS)
     public long ownLevelLookup() {
-        return overlay.ownSizeAt(1, 1, EntryType.BID, 65_000L * Ids.SCALE);
+        long result = 0L;
+        for (int i = 0; i < OPS; i++) {
+            result += overlay.ownSizeAt(1, 1, EntryType.BID, 65_000L * Ids.SCALE);
+        }
+        return result;
     }
 
     @Benchmark
+    @OperationsPerInvocation(OPS)
     public long exactL3Lookup() {
-        return externalLiquidityView.externalSizeAtL3Order(
-            1, 1, EntryType.BID, 65_000L * Ids.SCALE, 2L * Ids.SCALE, "venue-order-1");
+        long result = 0L;
+        for (int i = 0; i < OPS; i++) {
+            result += externalLiquidityView.externalSizeAtL3Order(
+                1, 1, EntryType.BID, 65_000L * Ids.SCALE, 2L * Ids.SCALE, "venue-order-1");
+        }
+        return result;
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(OPS)
+    public long ownOrderUpsertAndQuery() {
+        long result = 0L;
+        for (int i = 0; i < OPS; i++) {
+            overlay.upsert(1L, "venue-order-1", 1, 1, EntryType.BID, 65_000L * Ids.SCALE, Ids.SCALE, true);
+            result += overlay.ownSizeAt(1, 1, EntryType.BID, 65_000L * Ids.SCALE);
+        }
+        return result;
     }
 }

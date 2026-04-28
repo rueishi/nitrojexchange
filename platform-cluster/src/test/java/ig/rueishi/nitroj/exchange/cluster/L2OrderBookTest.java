@@ -293,6 +293,52 @@ final class L2OrderBookTest {
         assertThat(view.consolidatedBook(INSTRUMENT_ID).sizeAt(EntryType.ASK, 65_010_00000000L)).isEqualTo(5L);
     }
 
+    /** Verifies configured venue/instrument books are allocated during startup warmup. */
+    @Test
+    void internalMarketView_preallocateMarketState_allocatesConfiguredBooks() {
+        final InternalMarketView view = new InternalMarketView(new int[]{1, 2}, new int[]{10, 11});
+
+        assertThat(view.bookCount()).isEqualTo(4);
+        assertThat(view.consolidatedBookCount()).isEqualTo(2);
+        assertThat(view.findBook(1, 10)).isNotNull();
+        assertThat(view.findBook(2, 11)).isNotNull();
+    }
+
+    /** Verifies unknown books stay absent until explicitly requested. */
+    @Test
+    void internalMarketView_unknownVenueInstrument_findReturnsNullAndInvalidPrices() {
+        final InternalMarketView view = new InternalMarketView(new int[]{1}, new int[]{10});
+
+        assertThat(view.findBook(9, 99)).isNull();
+        assertThat(view.getBestBid(9, 99)).isEqualTo(Ids.INVALID_PRICE);
+        assertThat(view.getBestAsk(9, 99)).isEqualTo(Ids.INVALID_PRICE);
+    }
+
+    /** Verifies malformed configured IDs fail before live trading starts. */
+    @Test
+    void internalMarketView_preallocateMarketState_rejectsInvalidConfiguredIds() {
+        assertThatThrownBy(() -> new InternalMarketView(new int[]{0}, new int[]{10}))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("venueId");
+        assertThatThrownBy(() -> new InternalMarketView(new int[]{1}, new int[]{0}))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("instrumentId");
+    }
+
+    /** Verifies the first configured tick mutates preallocated books instead of creating new ones. */
+    @Test
+    void internalMarketView_firstConfiguredTick_usesPreallocatedBooks() {
+        final InternalMarketView view = new InternalMarketView(new int[]{VENUE_ID}, new int[]{INSTRUMENT_ID});
+        final int bookCount = view.bookCount();
+        final int consolidatedCount = view.consolidatedBookCount();
+
+        view.apply(decoder(EntryType.ASK, UpdateAction.NEW, 65_010_00000000L, 5L), 1L);
+
+        assertThat(view.bookCount()).isEqualTo(bookCount);
+        assertThat(view.consolidatedBookCount()).isEqualTo(consolidatedCount);
+        assertThat(view.getBestAsk(VENUE_ID, INSTRUMENT_ID)).isEqualTo(65_010_00000000L);
+    }
+
     /** Verifies L3-derived updates flow into venue L2 and consolidated L2. */
     @Test
     void venueL3Book_derivedUpdate_updatesVenueL2AndConsolidatedL2() {
