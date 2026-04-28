@@ -1,6 +1,6 @@
 # NitroJEx
 
-NitroJEx is a Java 21 low-latency trading platform prototype for venue connectivity, market-data normalization, order/risk state, and strategy execution.
+NitroJEx is a Java 21 low-latency trading platform prototype designed for market-making and venue-arbitrage workloads. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
 
 The active development line is **V11.0**. V10.0 is preserved as the frozen baseline, while V11.0 adds multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage.
 
@@ -59,12 +59,16 @@ NitroJEx is designed toward low-latency deterministic hot paths and has a roadma
   - FIXT.1.1 / FIX 5.0SP2
 - Venue plugin architecture separating venue behavior from FIX mechanics.
 - Coinbase venue plugin with Coinbase-specific logon, order-entry policy, REST polling, and L2/L3 normalizers.
+- Extensible venue plugin model for adding future exchange/broker venues without changing shared FIX protocol plugins or cluster strategy code.
 - Configurable venue market-data model: `L2` or `L3`.
 - Shared abstract FIX L2 and L3 market-data normalizers with venue enrichment hooks.
 - Venue L3 book that derives per-venue L2.
 - Consolidated L2 book across venues.
 - Own order overlay and external liquidity view so strategies can reason about gross liquidity versus executable external liquidity.
-- Market-making and cross-venue arbitrage strategy scaffolding/tests.
+- Built-in `MarketMakingStrategy` for quote generation using venue market data, spread configuration, inventory skew, quote sizing, and staleness checks.
+- Built-in `ArbStrategy` for venue and cross-venue arbitrage using executable edge, external-liquidity views, risk checks, and multi-leg order submission.
+- Strategy plugin extension model via `Strategy`, `StrategyContext`, and `StrategyEngine`, allowing additional strategies to be registered without changing the FIX or venue plugin layers.
+- Execution strategy extension model for future order-routing and execution algorithms such as TWAP, VWAP, smart order routing, pegged quoting, post-only management, liquidity taking, and hedge execution.
 - Coinbase exchange simulator and deterministic Coinbase FIX L3 E2E-style tests.
 - Planned Coinbase Simulator live-wire E2E tests for both Coinbase FIX L2 and L3 before real Coinbase QA/UAT.
 - Startup scripts for one gateway process per venue.
@@ -466,6 +470,8 @@ ExternalLiquidityView
 
 ## Strategy Notes
 
+NitroJEx's strategy layer is built around two current first-class trading use cases: market making and venue arbitrage. V11 includes `MarketMakingStrategy` and `ArbStrategy` as built-in implementations, while the cluster strategy contract remains open so new strategies can be added as plugins or separate modules.
+
 ### Market Making
 
 `MarketMakingStrategy` uses venue market data, configured spreads, inventory skew, quote sizing, and staleness checks to produce quoting behavior.
@@ -488,9 +494,19 @@ Important V11 arbitrage controls:
 
 Coinbase STP is implemented as venue-specific order-entry enrichment in `CoinbaseOrderEntryPolicy`.
 
+### Strategy Extension
+
+New strategies plug into the cluster-side strategy layer by implementing `Strategy` and registering with `StrategyEngine`. The gateway, FIX plugin, and venue plugin layers do not need strategy-specific changes as long as the strategy consumes normalized market data and submits commands through the shared context.
+
+`StrategyContext` is the supported dependency surface for strategy plugins. It exposes the internal market view, external liquidity view, risk engine, order manager, portfolio engine, recovery coordinator, SBE command encoders, ID registry, counters, and Aeron cluster reference.
+
+Trading strategy plugins decide what the system wants to do, such as quote, hedge, arbitrage, rebalance, or flatten risk. Execution strategy plugins can be added below that layer to decide how orders should be worked at a venue, such as immediate-or-cancel taking, post-only quoting, TWAP, VWAP, smart order routing, pegged orders, or child-order slicing.
+
+Production strategy implementations should remain deterministic under replay, avoid blocking work on the cluster thread, route all orders through risk/order APIs, and keep hot-path allocation behavior compatible with the V12 low-latency hardening plan.
+
 ## FIX and Venue Plugin Design
 
-V11 has two independent plugin axes.
+V11 has two independent plugin axes, plus the cluster-side strategy extension layer.
 
 FIX protocol plugins own protocol mechanics:
 
@@ -513,6 +529,10 @@ market-data enrichment
 venue capabilities
 credential fallback
 ```
+
+Additional venues are added by creating a venue-specific plugin package under `gateway/venue/<venue-name>`, implementing the shared venue contracts, registering the plugin, and supplying venue config. A new venue can choose any supported FIX protocol plugin, expose `L2` or `L3` market data, and add venue-specific logon, proprietary tags, STP, order-entry policy, execution-report normalization, and market-data enrichment.
+
+Strategy plugins live in the cluster strategy layer and consume normalized internal state. This keeps market-making, venue arbitrage, and future trading/execution algorithms independent from venue-specific FIX details.
 
 Shared abstractions live under:
 
