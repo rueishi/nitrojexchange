@@ -5,16 +5,25 @@ import ig.rueishi.nitroj.exchange.cluster.InternalMarketView;
 import ig.rueishi.nitroj.exchange.cluster.RiskDecision;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
 import ig.rueishi.nitroj.exchange.common.ArbStrategyConfig;
+import ig.rueishi.nitroj.exchange.common.ExecutionStrategyIds;
 import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.common.ScaledMath;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
 import ig.rueishi.nitroj.exchange.messages.BooleanType;
 import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.OrdType;
+import ig.rueishi.nitroj.exchange.messages.ParentIntentType;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentEncoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentTerminalReason;
+import ig.rueishi.nitroj.exchange.messages.PriceMode;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
 import ig.rueishi.nitroj.exchange.order.OrderManager;
@@ -49,11 +58,15 @@ public final class ArbStrategy implements Strategy {
     private ExternalLiquidityView externalLiquidityView;
     private RiskEngine riskEngine;
     private OrderManager orderManager;
+    private ExecutionStrategyEngine executionEngine;
     private Cluster cluster;
     private UnsafeBuffer egressBuffer;
     private MessageHeaderEncoder headerEncoder;
+    private final MessageHeaderDecoder headerDecoder = new MessageHeaderDecoder();
     private NewOrderCommandEncoder newOrderEncoder;
     private CancelOrderCommandEncoder cancelOrderEncoder;
+    private final ParentOrderIntentEncoder parentIntentEncoder = new ParentOrderIntentEncoder();
+    private final ParentOrderIntentDecoder parentIntentDecoder = new ParentOrderIntentDecoder();
     private long arbAttemptId;
     private int leg1VenueId;
     private int leg2VenueId;
@@ -83,6 +96,7 @@ public final class ArbStrategy implements Strategy {
         externalLiquidityView = ctx.externalLiquidityView();
         riskEngine = ctx.riskEngine();
         orderManager = ctx.orderManager();
+        executionEngine = ctx.executionEngine();
         cluster = ctx.cluster();
         egressBuffer = ctx.egressBuffer() == null ? new UnsafeBuffer(new byte[COMMAND_BUFFER_BYTES]) : ctx.egressBuffer();
         headerEncoder = ctx.headerEncoder() == null ? new MessageHeaderEncoder() : ctx.headerEncoder();
@@ -181,6 +195,22 @@ public final class ArbStrategy implements Strategy {
     @Override public void shutdown() { resetArbState(); }
     @Override public int strategyId() { return Ids.STRATEGY_ARB; }
 
+    @Override
+    public void onParentTerminal(final ParentOrderTerminalDecoder decoder) {
+        if (decoder.parentOrderId() != arbAttemptId) {
+            return;
+        }
+        if (decoder.terminalReason() == ParentTerminalReason.EXPIRED
+            || decoder.terminalReason() == ParentTerminalReason.RISK_REJECTED
+            || decoder.terminalReason() == ParentTerminalReason.HEDGE_FAILED
+            || decoder.terminalReason() == ParentTerminalReason.KILL_SWITCH
+            || decoder.terminalReason() == ParentTerminalReason.EXECUTION_ABORTED
+            || decoder.terminalReason() == ParentTerminalReason.CHILD_REJECTED) {
+            cooldownUntilMicros = nowMicros() + config.cooldownAfterFailureMicros();
+        }
+        resetArbState();
+    }
+
     private void executeArb(final int buyVenueId, final int sellVenueId, final long size, final long buyPrice, final long sellPrice) {
         final long base = cluster.logPosition();
         arbAttemptId = base;
@@ -191,19 +221,60 @@ public final class ArbStrategy implements Strategy {
         leg1Status = LEG_PENDING;
         leg2Status = LEG_PENDING;
         arbCreatedCluster = nowMicros();
+        arbActive = true;
+        if (executionEngine != null) {
+            if (!submitMultiLegIntent(buyVenueId, sellVenueId, size, buyPrice, sellPrice, base)) {
+                cooldownUntilMicros = nowMicros() + config.cooldownAfterFailureMicros();
+                resetArbState();
+            }
+            return;
+        }
         if (!riskApproved(buyVenueId, Side.BUY, buyPrice, size)
             || !riskApproved(sellVenueId, Side.SELL, sellPrice, size)) {
             cooldownUntilMicros = nowMicros() + config.cooldownAfterFailureMicros();
             resetArbState();
             return;
         }
-        arbActive = true;
         int offset = 0;
         offset += encodeLeg(offset, buyVenueId, Side.BUY, buyPrice, size, leg1ClOrdId, Ids.STRATEGY_ARB);
         offset += encodeLeg(offset, sellVenueId, Side.SELL, sellPrice, size, leg2ClOrdId, Ids.STRATEGY_ARB);
         cluster.offer(egressBuffer, 0, offset);
         activeArbTimeoutCorrelId = ARB_TIMEOUT_BASE + (arbAttemptId & 0xFFFFL);
         cluster.scheduleTimer(activeArbTimeoutCorrelId, nowMicros() + config.legTimeoutClusterMicros());
+    }
+
+    private boolean submitMultiLegIntent(
+        final int buyVenueId,
+        final int sellVenueId,
+        final long size,
+        final long buyPrice,
+        final long sellPrice,
+        final long parentOrderId
+    ) {
+        parentIntentEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
+            .parentOrderId(parentOrderId)
+            .strategyId((short) Ids.STRATEGY_ARB)
+            .executionStrategyId(config.executionStrategy().executionStrategyId())
+            .intentType(ParentIntentType.MULTI_LEG)
+            .side(Side.BUY)
+            .instrumentId(config.instrumentId())
+            .primaryVenueId(buyVenueId)
+            .secondaryVenueId(sellVenueId)
+            .quantityScaled(size)
+            .priceMode(PriceMode.LIMIT)
+            .limitPriceScaled(buyPrice)
+            .referencePriceScaled(0L)
+            .timeInForcePreference(TimeInForce.IOC)
+            .urgencyHint((byte) 1)
+            .postOnlyPreference(BooleanType.FALSE)
+            .selfTradePolicy((byte) 0)
+            .correlationId(parentOrderId)
+            .legCount((byte) 2)
+            .leg2Side(Side.SELL)
+            .leg2LimitPriceScaled(sellPrice)
+            .parentTimeoutMicros(config.legTimeoutClusterMicros());
+        parentIntentDecoder.wrapAndApplyHeader(egressBuffer, 0, headerDecoder);
+        return executionEngine.submit(parentIntentDecoder);
     }
 
     private boolean wouldSelfCross(final int venueId, final Side side, final long price, final long externalSizeAtPrice) {

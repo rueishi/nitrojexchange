@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" tests="24" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:41" hostname="LAPTOP-PGTQL50G" time="0.303">
+  <properties/>
+  <testcase name="bothLegsInSingleEgressOffer_andIoc()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.015"/>
+  <testcase name="leg1IsBuyOnCheaperVenue_leg2SellOnExpensiveVenue()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="opportunityDetection_maxPositionCap_limitsExecutableSize()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="cooldown_exactBoundary_allowsNewArb()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="metadataAccess_returnsCachedArrays()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.015"/>
+  <testcase name="hedgeFailure_killSwitchActivated()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="preTradeRiskRejected_noTradeAndCooldown()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="legTimeout_wrongCorrelId_ignored()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="opportunityDetection_minProfitBoundary_tradesAtThresholdOnly()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.021"/>
+  <testcase name="opportunityDetection_partialOwnLiquidity_reducesExecutableSize()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.014"/>
+  <testcase name="netProfitFormula_includesFeesAndSlippage()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.007"/>
+  <testcase name="fill_imbalanced_hedgeSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="arbAttemptId_andClOrdIds_derivedFromSingleLogPosition()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="cooldown_afterHedgeFailure_newArbSuppressed()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.014"/>
+  <testcase name="opportunityDetection_ownLiquidityOnlyFalsePositive_noTradeExecuted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.008"/>
+  <testcase name="opportunityDetection_highFees_noTradeExecuted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.014"/>
+  <testcase name="fill_bothLegsFinal_noImbalance_arbReset()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.01"/>
+  <testcase name="timerRegistered_onEachArbExecution()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="noNewArb_whileArbActive()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.008"/>
+  <testcase name="opportunityDetection_sufficientSpread_tradeExecuted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="selfCross_buyLegAgainstOwnSell_skipsTrade()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.008"/>
+  <testcase name="opportunityDetection_missingVenueQuote_noTradeExecuted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.013"/>
+  <testcase name="selfCross_sellLegAgainstOwnBuy_skipsTrade()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.009"/>
+  <testcase name="legTimeout_pendingLegCanceled_hedgeSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyTest" time="0.014"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

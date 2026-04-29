@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.042">
+  <properties/>
+  <testcase name="maxNotional_rejectsOrdersAboveLimit()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.002"/>
+  <testcase name="deterministicRejectCodes_arePrimitiveAndStable()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="orderRateLimit_rejectsAtWindowLimit()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="killSwitchDeactivatePublishesEventAndAllowsTrading()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="maxLongPosition_rejectsProjectedLongBreach()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="softPositionLimit_publishesAlertButApproves()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="approved_whenWithinAllLimitsAndVenueConnected()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.0"/>
+  <testcase name="dailyLoss_exceeded_activatesKillSwitchAndRejects()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.002"/>
+  <testcase name="snapshot_writeAndLoad_preservesKillSwitchAndDailyMetrics()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="preTradeCheck_averageLatencyUnderFiveMicros()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.005"/>
+  <testcase name="recoveryLockPublishesSetAndClearEvents()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="venueDisconnected_rejectsAfterOtherChecks()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="resetAllClearsRuntimeStateButKeepsConfiguredLimits()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="boundaryValues_equalLimitsApproved()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="killSwitchActivationPublishesEventAndCancelsOrders()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="hardReject_publishesRiskEvent()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="resetDailyCountersClearsPnlAndVolume()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="killSwitch_rejectsOrders()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="maxOrderSize_rejectsOrdersAboveLimit()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="softDailyLoss_publishesAlertButApproves()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="maxShortPosition_rejectsProjectedShortBreach()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <testcase name="recoveryLock_checkedBeforeKillSwitch()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.0"/>
+  <testcase name="orderRateLimit_prunesOrdersOlderThanOneSecond()" classname="ig.rueishi.nitroj.exchange.cluster.RiskEngineTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

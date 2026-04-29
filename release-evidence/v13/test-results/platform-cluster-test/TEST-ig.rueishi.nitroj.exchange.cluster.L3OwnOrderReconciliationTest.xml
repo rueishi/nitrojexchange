@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.184">
+  <properties/>
+  <testcase name="edgeCases_duplicateAddDeleteBeforeExecutionReportAndIdReuseRemainAdvisory()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.015"/>
+  <testcase name="mixedOwnAndExternalAtOneLevel_excludesOnlyExactOwnOrder()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.013"/>
+  <testcase name="queuePosition_knownWhenOrderingAvailable_unknownWhenUnavailableOrMissing()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.011"/>
+  <testcase name="ownOrderSizeChangePriceMoveDeleteAndPartialFillFollowOrderManagerState()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.043"/>
+  <testcase name="negativeMismatchesAndUnknownIdsDoNotMarkOrderAsOwn()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.016"/>
+  <testcase name="exceptions_invalidInputsAndIncompleteOrderIdentityAreRejected()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.016"/>
+  <testcase name="ownOrderAppearsInL3_exactOwnSizeExcludedAndGrossBooksRemainUnchanged()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.014"/>
+  <testcase name="failureCases_outOfOrderMissingDeleteGapAndReconnectDoNotCorruptGrossBooks()" classname="ig.rueishi.nitroj.exchange.cluster.L3OwnOrderReconciliationTest" time="0.017"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

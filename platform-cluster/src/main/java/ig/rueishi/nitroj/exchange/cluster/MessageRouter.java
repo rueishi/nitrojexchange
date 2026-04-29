@@ -6,6 +6,7 @@ import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.VenueStatusEventDecoder;
 import ig.rueishi.nitroj.exchange.order.OrderManager;
+import ig.rueishi.nitroj.exchange.order.OrderState;
 import io.aeron.cluster.service.Cluster;
 import java.util.Objects;
 import java.util.function.LongSupplier;
@@ -124,16 +125,18 @@ public final class MessageRouter {
     private void onMarketData(final MarketDataEventDecoder decoder) {
         final long timestampMicros = cluster == null ? clusterTimeMicros.getAsLong() : cluster.time();
         marketView.apply(decoder, timestampMicros);
-        strategyEngine.onMarketData(decoder);
+        strategyEngine.onMarketData(decoder, timestampMicros);
     }
 
     private void onExecution(final ExecutionEventDecoder decoder) {
+        final OrderState order = orderManager.getOrder(decoder.clOrdId());
+        final long parentOrderId = order == null ? 0L : order.parentOrderId();
         final boolean isFill = orderManager.onExecution(decoder);
         if (isFill) {
             portfolioEngine.onFill(decoder);
             riskEngine.onFill(decoder);
         }
-        strategyEngine.onExecution(decoder, isFill);
+        strategyEngine.onExecution(decoder, isFill, parentOrderId);
     }
 
     /**
@@ -146,6 +149,14 @@ public final class MessageRouter {
     public interface StrategyDispatch {
         void onMarketData(MarketDataEventDecoder decoder);
 
+        default void onMarketData(final MarketDataEventDecoder decoder, final long clusterTimeMicros) {
+            onMarketData(decoder);
+        }
+
         void onExecution(ExecutionEventDecoder decoder, boolean isFill);
+
+        default void onExecution(final ExecutionEventDecoder decoder, final boolean isFill, final long parentOrderId) {
+            onExecution(decoder, isFill);
+        }
     }
 }

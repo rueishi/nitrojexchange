@@ -8,7 +8,16 @@ import ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator;
 import ig.rueishi.nitroj.exchange.cluster.RiskDecision;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
 import ig.rueishi.nitroj.exchange.common.ArbStrategyConfig;
+import ig.rueishi.nitroj.exchange.common.ExecutionStrategyIds;
 import ig.rueishi.nitroj.exchange.common.Ids;
+import ig.rueishi.nitroj.exchange.execution.ChildExecutionView;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategy;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContext;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderIntentView;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
 import ig.rueishi.nitroj.exchange.messages.BooleanType;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.ExecType;
@@ -16,8 +25,12 @@ import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventEncoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.OrdType;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalEncoder;
+import ig.rueishi.nitroj.exchange.messages.ParentTerminalReason;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
@@ -177,6 +190,7 @@ final class ArbStrategyTest {
         seedOpportunity(harness);
 
         trigger(harness);
+        deliverRiskRejectedParentTerminal(harness);
 
         assertThat(harness.order.orders).isEmpty();
         assertThat(harness.strategy.cooldownUntilMicros()).isGreaterThan(harness.cluster.time);
@@ -320,6 +334,7 @@ final class ArbStrategyTest {
         harness.risk.decision = RiskDecision.REJECT_ORDER_TOO_LARGE;
         seedOpportunity(harness);
         trigger(harness);
+        deliverRiskRejectedParentTerminal(harness);
         harness.order.orders.clear();
         harness.risk.decision = RiskDecision.APPROVED;
         harness.cluster.time = harness.strategy.cooldownUntilMicros();
@@ -356,8 +371,31 @@ final class ArbStrategyTest {
         final RecordingRisk risk = new RecordingRisk();
         final RecordingOrder order = new RecordingOrder();
         final RecordingCluster cluster = new RecordingCluster();
+        final ParentOrderRegistry parentRegistry = new ParentOrderRegistry(16, 16);
+        final ExecutionStrategyRegistry executionRegistry = new ExecutionStrategyRegistry(8, 8);
+        final RecordingExecutionStrategy executionStrategy = new RecordingExecutionStrategy(order, cluster);
+        executionRegistry.register(executionStrategy);
+        executionRegistry.allowCompatibility(Ids.STRATEGY_ARB, ExecutionStrategyIds.MULTI_LEG_CONTINGENT);
+        final ExecutionStrategyEngine executionEngine = new ExecutionStrategyEngine(
+            executionRegistry,
+            new ExecutionStrategyContext(
+                marketView,
+                risk,
+                order,
+                parentRegistry,
+                new UnsafeBuffer(new byte[1024]),
+                new MessageHeaderEncoder(),
+                new ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder(),
+                new ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder(),
+                () -> cluster.time,
+                (correlationId, deadlineClusterMicros) -> true,
+                nullIdRegistry(),
+                new org.agrona.concurrent.status.CountersManager(
+                    new UnsafeBuffer(new byte[1024 * 1024]),
+                    new UnsafeBuffer(new byte[64 * 1024]))));
+        executionEngine.initRegisteredStrategies();
         final ArbStrategy strategy = new ArbStrategy(config);
-        strategy.init(new StrategyContextImpl(marketView, risk, order, new RecordingPortfolio(), new RecordingRecovery(), cluster.proxy,
+        strategy.init(new StrategyContextImpl(marketView, risk, order, new RecordingPortfolio(), new RecordingRecovery(), executionEngine, cluster.proxy,
             new UnsafeBuffer(new byte[1024]), new MessageHeaderEncoder(),
             new ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder(),
             new ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder(), null, null));
@@ -374,6 +412,20 @@ final class ArbStrategyTest {
     static void trigger(final Harness harness) {
         final MarketDataEventDecoder decoder = decoder(Ids.VENUE_COINBASE_SANDBOX, EntryType.BID, 100_500L * Ids.SCALE);
         harness.strategy.onMarketData(decoder);
+    }
+
+    static void deliverRiskRejectedParentTerminal(final Harness harness) {
+        final long parentOrderId = harness.strategy.arbAttemptId();
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[128]);
+        new ParentOrderTerminalEncoder().wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .parentOrderId(parentOrderId)
+            .strategyId((short) Ids.STRATEGY_ARB)
+            .executionStrategyId(ExecutionStrategyIds.MULTI_LEG_CONTINGENT)
+            .finalCumFillQtyScaled(0L)
+            .terminalReason(ParentTerminalReason.RISK_REJECTED);
+        final ParentOrderTerminalDecoder decoder = new ParentOrderTerminalDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderDecoder());
+        harness.strategy.onParentTerminal(decoder);
     }
 
     static void apply(final Harness harness, final int venueId, final EntryType type, final long price) {
@@ -402,6 +454,16 @@ final class ArbStrategyTest {
         final ExecutionEventDecoder decoder = new ExecutionEventDecoder();
         decoder.wrap(buffer, MessageHeaderEncoder.ENCODED_LENGTH, ExecutionEventEncoder.BLOCK_LENGTH, ExecutionEventEncoder.SCHEMA_VERSION);
         return decoder;
+    }
+
+    static ig.rueishi.nitroj.exchange.registry.IdRegistry nullIdRegistry() {
+        return new ig.rueishi.nitroj.exchange.registry.IdRegistry() {
+            @Override public int venueId(final long sessionId) { return Ids.VENUE_COINBASE; }
+            @Override public int instrumentId(final CharSequence symbol) { return Ids.INSTRUMENT_BTC_USD; }
+            @Override public String symbolOf(final int instrumentId) { return "BTC-USD"; }
+            @Override public String venueNameOf(final int venueId) { return "coinbase"; }
+            @Override public void registerSession(final int venueId, final long sessionId) { }
+        };
     }
 
     record Harness(ArbStrategy strategy, InternalMarketView marketView, RecordingRisk risk, RecordingOrder order, RecordingCluster cluster) {
@@ -448,6 +510,55 @@ final class ArbStrategyTest {
         }
     }
 
+    static final class RecordingExecutionStrategy implements ExecutionStrategy {
+        final RecordingOrder order;
+        final RecordingCluster cluster;
+        ExecutionStrategyContext ctx;
+
+        RecordingExecutionStrategy(final RecordingOrder order, final RecordingCluster cluster) {
+            this.order = order;
+            this.cluster = cluster;
+        }
+
+        @Override public int executionStrategyId() { return ExecutionStrategyIds.MULTI_LEG_CONTINGENT; }
+        @Override public void init(final ExecutionStrategyContext ctx) { this.ctx = ctx; }
+        @Override public void onParentIntent(final ParentOrderIntentView intent) {
+            ctx.parentOrderRegistry().claim(intent.parentOrderId(), intent.strategyId(), executionStrategyId(), intent.quantityScaled(), 1L);
+            final RiskDecision leg1Risk = ctx.riskEngine().preTradeCheck(
+                intent.primaryVenueId(),
+                intent.instrumentId(),
+                Side.BUY.value(),
+                intent.limitPriceScaled(),
+                intent.quantityScaled(),
+                Ids.STRATEGY_ARB);
+            if (!leg1Risk.approved()) {
+                ctx.parentOrderRegistry().transition(intent.parentOrderId(), ParentOrderState.FAILED,
+                    ParentOrderState.REASON_RISK_REJECTED, 1L);
+                return;
+            }
+            final RiskDecision leg2Risk = ctx.riskEngine().preTradeCheck(
+                intent.secondaryVenueId(),
+                intent.instrumentId(),
+                Side.SELL.value(),
+                intent.decoder().leg2LimitPriceScaled(),
+                intent.quantityScaled(),
+                Ids.STRATEGY_ARB);
+            if (!leg2Risk.approved()) {
+                ctx.parentOrderRegistry().transition(intent.parentOrderId(), ParentOrderState.FAILED,
+                    ParentOrderState.REASON_RISK_REJECTED, 1L);
+                return;
+            }
+            order.orders.add(new OrderRecord(intent.correlationId() + 1L, intent.primaryVenueId(), Side.BUY, TimeInForce.IOC, Ids.STRATEGY_ARB, intent.quantityScaled()));
+            order.orders.add(new OrderRecord(intent.correlationId() + 2L, intent.secondaryVenueId(), Side.SELL, TimeInForce.IOC, Ids.STRATEGY_ARB, intent.quantityScaled()));
+            cluster.offerLengths.add(128);
+            cluster.offerKinds.add("arb");
+        }
+        @Override public void onMarketDataTick(final int venueId, final int instrumentId, final long clusterTimeMicros) { }
+        @Override public void onChildExecution(final ChildExecutionView execution) { }
+        @Override public void onTimer(final long correlationId) { }
+        @Override public void onCancel(final long parentOrderId, final byte reasonCode) { cluster.offerKinds.add("cancel"); }
+    }
+
     static final class RecordingOrder implements OrderManager {
         final List<OrderRecord> orders = new ArrayList<>();
         @Override public void createPendingOrder(final long clOrdId, final int venueId, final int instrumentId, final byte side, final byte ordType, final byte timeInForce, final long priceScaled, final long qtyScaled, final int strategyId) { orders.add(new OrderRecord(clOrdId, venueId, Side.get(side), TimeInForce.get(timeInForce), strategyId, qtyScaled)); assertThat(ordType).isEqualTo(OrdType.LIMIT.value()); }
@@ -465,7 +576,8 @@ final class ArbStrategyTest {
     static final class RecordingRisk implements RiskEngine {
         RiskDecision decision = RiskDecision.APPROVED;
         String killSwitchReason;
-        @Override public RiskDecision preTradeCheck(final int venueId, final int instrumentId, final byte side, final long priceScaled, final long qtyScaled, final int strategyId) { return decision; }
+        int preTradeChecks;
+        @Override public RiskDecision preTradeCheck(final int venueId, final int instrumentId, final byte side, final long priceScaled, final long qtyScaled, final int strategyId) { preTradeChecks++; return decision; }
         @Override public void updatePositionSnapshot(final int venueId, final int instrumentId, final long netQtyScaled) { }
         @Override public void updateDailyPnl(final long realizedPnlDeltaScaled) { }
         @Override public void setRecoveryLock(final int venueId, final boolean locked) { }

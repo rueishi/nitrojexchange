@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.163">
+  <properties/>
+  <testcase name="acceptedChild_createsOrderLinksParentAndEncodesCommand()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.021"/>
+  <testcase name="replay_sameIntentAndExecutionProduceSameParentState()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.026"/>
+  <testcase name="childFillWhileParentCancelPending_completesParent()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.013"/>
+  <testcase name="parentCancelWhileChildWorking_movesParentAndChildToCancelPending()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.009"/>
+  <testcase name="childReject_transitionsParentFailed()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.014"/>
+  <testcase name="capacityFull_rejectsSecondParentBeforeChildCreation()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.012"/>
+  <testcase name="fullFill_transitionsParentDoneAndUnlinksChild()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.017"/>
+  <testcase name="timerNoop_onlyRecordsCallback()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.008"/>
+  <testcase name="riskRejectBeforeChildCommand_failsParentWithoutChild()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.012"/>
+  <testcase name="snapshotLoad_restoresWorkingParentAndChildLink()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.009"/>
+  <testcase name="partialFillThenTerminal_updatesParentFillAndCompletes()" classname="ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecutionTest" time="0.014"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

@@ -5,6 +5,7 @@ import ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityView;
 import ig.rueishi.nitroj.exchange.cluster.PortfolioEngine;
 import ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
 import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
@@ -50,6 +51,10 @@ public interface StrategyContext {
     PortfolioEngine portfolioEngine();
 
     RecoveryCoordinator recoveryCoordinator();
+
+    default ExecutionStrategyEngine executionEngine() {
+        return null;
+    }
 
     Cluster cluster();
 

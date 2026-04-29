@@ -10,10 +10,10 @@ import org.agrona.DirectBuffer;
 @SuppressWarnings("all")
 public final class NewOrderCommandDecoder
 {
-    public static final int BLOCK_LENGTH = 37;
+    public static final int BLOCK_LENGTH = 45;
     public static final int TEMPLATE_ID = 10;
     public static final int SCHEMA_ID = 1;
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
     public static final String SEMANTIC_VERSION = "5.2";
     public static final java.nio.ByteOrder BYTE_ORDER = java.nio.ByteOrder.LITTLE_ENDIAN;
 
@@ -561,6 +561,62 @@ public final class NewOrderCommandDecoder
     }
 
 
+    public static int parentOrderIdId()
+    {
+        return 10;
+    }
+
+    public static int parentOrderIdSinceVersion()
+    {
+        return 2;
+    }
+
+    public static int parentOrderIdEncodingOffset()
+    {
+        return 37;
+    }
+
+    public static int parentOrderIdEncodingLength()
+    {
+        return 8;
+    }
+
+    public static String parentOrderIdMetaAttribute(final MetaAttribute metaAttribute)
+    {
+        if (MetaAttribute.PRESENCE == metaAttribute)
+        {
+            return "optional";
+        }
+
+        return "";
+    }
+
+    public static long parentOrderIdNullValue()
+    {
+        return 0L;
+    }
+
+    public static long parentOrderIdMinValue()
+    {
+        return -9223372036854775807L;
+    }
+
+    public static long parentOrderIdMaxValue()
+    {
+        return 9223372036854775807L;
+    }
+
+    public long parentOrderId()
+    {
+        if (parentMessage.actingVersion < 2)
+        {
+            return 0L;
+        }
+
+        return buffer.getLong(offset + 37, BYTE_ORDER);
+    }
+
+
     public String toString()
     {
         if (null == buffer)
@@ -628,6 +684,9 @@ public final class NewOrderCommandDecoder
         builder.append('|');
         builder.append("strategyId=");
         builder.append(this.strategyId());
+        builder.append('|');
+        builder.append("parentOrderId=");
+        builder.append(this.parentOrderId());
 
         limit(originalLimit);
 

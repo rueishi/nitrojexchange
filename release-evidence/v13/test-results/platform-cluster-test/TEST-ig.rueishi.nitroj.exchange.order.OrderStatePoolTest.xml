@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:41" hostname="LAPTOP-PGTQL50G" time="0.008">
+  <properties/>
+  <testcase name="orderStateReset_allPrimitiveFieldsZero()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.001"/>
+  <testcase name="claim_objectIsReset_allFieldsZero()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.0"/>
+  <testcase name="claim2049th_heapAllocates_counterIncremented()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.002"/>
+  <testcase name="orderStateReset_venueOrderIdNull()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.0"/>
+  <testcase name="releaseAndClaim_sameObjectReturned()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.0"/>
+  <testcase name="release_returnsObjectToPool()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.0"/>
+  <testcase name="claim_returnsPreAllocatedObject()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.001"/>
+  <testcase name="claimAll2048_noException()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.001"/>
+  <testcase name="release_afterHeapOverflow_poolReceivesObject()" classname="ig.rueishi.nitroj.exchange.order.OrderStatePoolTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Apr 28, 2026 8:54:41 PM ig.rueishi.nitroj.exchange.order.OrderStatePool claim
+WARNING: OrderStatePool exhausted; allocating overflow order state. Total overflow: 1
+Apr 28, 2026 8:54:41 PM ig.rueishi.nitroj.exchange.order.OrderStatePool claim
+WARNING: OrderStatePool exhausted; allocating overflow order state. Total overflow: 1
+]]></system-err>
+</testsuite>

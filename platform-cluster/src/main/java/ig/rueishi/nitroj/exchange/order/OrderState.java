@@ -18,9 +18,15 @@ import java.nio.charset.StandardCharsets;
  * instead of constructing {@link String} or byte-array objects. The
  * {@link #venueOrderId()} accessor is a cold/test convenience that materializes
  * a string only for assertions, diagnostics, and compatibility boundaries.</p>
+ *
+ * <p>V13 child attribution is stored as a primitive parent order ID. A value of
+ * {@code 0} is the compatibility sentinel for unparented children created by
+ * V12-era strategy paths, admin operations, or recovery tooling. The field is
+ * copied into snapshots and reset on pool release with the rest of the state.</p>
  */
 public final class OrderState {
     long clOrdId;
+    long parentOrderId;
     long venueClOrdId;
     final byte[] venueOrderIdBytes = new byte[BoundedTextIdentity.DEFAULT_MAX_LENGTH];
     int venueOrderIdLength;
@@ -54,6 +60,7 @@ public final class OrderState {
      */
     public void reset() {
         clOrdId = 0L;
+        parentOrderId = 0L;
         venueClOrdId = 0L;
         venueOrderIdLength = 0;
         venueId = 0;
@@ -79,6 +86,10 @@ public final class OrderState {
 
     public long clOrdId() {
         return clOrdId;
+    }
+
+    public long parentOrderId() {
+        return parentOrderId;
     }
 
     public String venueOrderId() {

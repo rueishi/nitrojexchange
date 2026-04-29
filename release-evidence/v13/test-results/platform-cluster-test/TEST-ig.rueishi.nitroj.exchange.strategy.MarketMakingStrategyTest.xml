@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:41" hostname="LAPTOP-PGTQL50G" time="0.256">
+  <properties/>
+  <testcase name="suppression_wideSpread_noQuotesSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.012"/>
+  <testcase name="metadataAccess_returnsCachedArrays()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.008"/>
+  <testcase name="quoteSize_longInventory_smallerBid_largerAsk()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.012"/>
+  <testcase name="fairValue_symmetricSpread_midprice()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.008"/>
+  <testcase name="quoteIntent_noDirectChildClusterOffer()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.013"/>
+  <testcase name="lastTradePrice_updatedFromTradeTick_andNotFromBidAsk()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.008"/>
+  <testcase name="suppression_staleMarketData_noQuotesSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.014"/>
+  <testcase name="refresh_liveQuotesIdentical_noNewQuote()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.007"/>
+  <testcase name="suppression_recoveryLock_noQuotesSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.012"/>
+  <testcase name="suppression_killSwitch_noQuotesSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.008"/>
+  <testcase name="wideSpread_withLastTradePrice_quotesAtTradePrice()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.013"/>
+  <testcase name="inventorySkew_shortPosition_higherBidAndAsk()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.007"/>
+  <testcase name="clOrdId_usesClusterLogPosition_andEachQuoteUnique()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.013"/>
+  <testcase name="zeroSize_bidSideAtMaxLong_bidNotSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.009"/>
+  <testcase name="tickRounding_bidRoundedDown_askRoundedUp()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.014"/>
+  <testcase name="suppression_cleared_quotesResume()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.009"/>
+  <testcase name="onOrderRejected_threeConsecutive_suppressionSet_andFillResetsCounter()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.012"/>
+  <testcase name="bidAskNonCrossing_skewedPricesFixed()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.009"/>
+  <testcase name="refresh_cancelSentBeforeNewQuote()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.013"/>
+  <testcase name="minQuoteSizeFractionBps_configurable_floorRespected()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.008"/>
+  <testcase name="parentTerminal_clearsLiveParentId()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.013"/>
+  <testcase name="inventorySkew_longPosition_lowerBidAndAsk()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.007"/>
+  <testcase name="wrongVenueId_ignored()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingStrategyTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

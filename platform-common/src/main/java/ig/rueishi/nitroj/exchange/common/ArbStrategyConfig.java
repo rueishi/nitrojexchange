@@ -24,6 +24,7 @@ import java.util.Arrays;
  * @param maxLegSubmissionGapMicros maximum gap between leg submissions
  * @param legTimeoutClusterMicros cluster-time timeout for leg completion
  * @param cooldownAfterFailureMicros cooldown after failed attempts
+ * @param executionStrategy V13 execution strategy selection and overrides
  */
 public record ArbStrategyConfig(
     int instrumentId,
@@ -36,13 +37,34 @@ public record ArbStrategyConfig(
     long maxArbPositionScaled,
     long maxLegSubmissionGapMicros,
     long legTimeoutClusterMicros,
-    long cooldownAfterFailureMicros
+    long cooldownAfterFailureMicros,
+    ExecutionStrategySelectionConfig executionStrategy
 ) {
     public ArbStrategyConfig {
         venueIds = Arrays.copyOf(venueIds, venueIds.length);
         takerFeeScaled = Arrays.copyOf(takerFeeScaled, takerFeeScaled.length);
         baseSlippageBps = Arrays.copyOf(baseSlippageBps, baseSlippageBps.length);
         slippageSlopeBps = Arrays.copyOf(slippageSlopeBps, slippageSlopeBps.length);
+    }
+
+    public ArbStrategyConfig(
+        final int instrumentId,
+        final int[] venueIds,
+        final long minNetProfitBps,
+        final long[] takerFeeScaled,
+        final long[] baseSlippageBps,
+        final long[] slippageSlopeBps,
+        final long referenceSize,
+        final long maxArbPositionScaled,
+        final long maxLegSubmissionGapMicros,
+        final long legTimeoutClusterMicros,
+        final long cooldownAfterFailureMicros
+    ) {
+        this(instrumentId, venueIds, minNetProfitBps, takerFeeScaled, baseSlippageBps, slippageSlopeBps,
+            referenceSize, maxArbPositionScaled, maxLegSubmissionGapMicros, legTimeoutClusterMicros,
+            cooldownAfterFailureMicros, new ExecutionStrategySelectionConfig(
+                ExecutionStrategyIds.MULTI_LEG_CONTINGENT,
+                new ExecutionStrategyOverrideConfig[0]));
     }
 
     @Override

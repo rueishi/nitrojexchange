@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:37" hostname="LAPTOP-PGTQL50G" time="0.045">
+  <properties/>
+  <testcase name="bestBidAsk_recalculateAfterZeroSizeUpdate()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.003"/>
+  <testcase name="emptyBook_returnsInvalidSentinels()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.003"/>
+  <testcase name="capacityFull_existingContributionCanStillUpdateAndDelete()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.0"/>
+  <testcase name="internalMarketView_updatesVenueAndConsolidatedBooks()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.023"/>
+  <testcase name="invalidCapacity_throwsClearly()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.002"/>
+  <testcase name="deterministicQueryBehavior_independentOfInsertionOrder()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.003"/>
+  <testcase name="samePriceAcrossVenues_sumsSize()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.001"/>
+  <testcase name="deleteOneVenue_keepsOtherVenueContribution()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.001"/>
+  <testcase name="capacityExceeded_ignoresNewContributionAndPreservesExistingState()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.001"/>
+  <testcase name="invalidSide_ignoredWithoutMutatingBook()" classname="ig.rueishi.nitroj.exchange.cluster.ConsolidatedL2BookTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

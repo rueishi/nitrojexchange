@@ -73,6 +73,28 @@ public class OrderManagerBenchmark {
         return manager.poolAvailable();
     }
 
+    @Benchmark
+    @OperationsPerInvocation(OPS)
+    public int createWithParentAckFillReleaseCycle() {
+        for (int i = 0; i < OPS; i++) {
+            final long clOrdId = i + 1L;
+            manager.createPendingOrder(
+                clOrdId,
+                Ids.VENUE_COINBASE,
+                Ids.INSTRUMENT_BTC_USD,
+                Side.BUY.value(),
+                OrdType.LIMIT.value(),
+                TimeInForce.GTC.value(),
+                PRICE,
+                QTY,
+                Ids.STRATEGY_MARKET_MAKING,
+                10_000L + clOrdId);
+            manager.onExecution(acknowledgements[i]);
+            manager.onExecution(fills[i]);
+        }
+        return manager.poolAvailable();
+    }
+
     private static ExecutionEventDecoder event(
         final long clOrdId,
         final ExecType execType,

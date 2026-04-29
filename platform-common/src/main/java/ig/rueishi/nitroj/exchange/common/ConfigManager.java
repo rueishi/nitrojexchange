@@ -300,7 +300,8 @@ public final class ConfigManager {
             requiredLong(config, "strategy.market_making.maxTolerableSpreadBps"),
             parseScaled("0.01"),
             parseScaled("0.00001"),
-            requiredLong(config, "strategy.market_making.minQuoteSizeFractionBps"));
+            requiredLong(config, "strategy.market_making.minQuoteSizeFractionBps"),
+            loadExecutionStrategySelection(config, "strategy.market_making", Ids.STRATEGY_MARKET_MAKING));
     }
 
     private static ArbStrategyConfig loadArb(final Config config) {
@@ -336,7 +337,84 @@ public final class ConfigManager {
             requiredScaled(config, "strategy.arb.maxArbPositionBtc"),
             requiredLong(config, "strategy.arb.maxLegSubmissionGapMicros"),
             requiredLong(config, "strategy.arb.legTimeoutClusterMicros"),
-            optionalLong(config, "strategy.arb.cooldownAfterFailureMicros", 0L));
+            optionalLong(config, "strategy.arb.cooldownAfterFailureMicros", 0L),
+            loadExecutionStrategySelection(config, "strategy.arb", Ids.STRATEGY_ARB));
+    }
+
+    private static ExecutionStrategySelectionConfig loadExecutionStrategySelection(
+        final Config config,
+        final String strategyPath,
+        final int tradingStrategyId
+    ) {
+        final String executionStrategyPath = strategyPath + ".executionStrategy";
+        final String configuredName = optionalString(config, executionStrategyPath, null);
+        final int executionStrategyId = configuredName == null
+            ? ExecutionStrategyIds.defaultForTradingStrategy(tradingStrategyId)
+            : ExecutionStrategyIds.parseCanonical(configuredName, executionStrategyPath);
+        validateExecutionStrategyCompatibility(tradingStrategyId, executionStrategyId, executionStrategyPath);
+
+        final ExecutionStrategyOverrideConfig[] overrides = loadExecutionStrategyOverrides(
+            config,
+            strategyPath + ".executionOverride",
+            tradingStrategyId);
+        return new ExecutionStrategySelectionConfig(executionStrategyId, overrides);
+    }
+
+    private static ExecutionStrategyOverrideConfig[] loadExecutionStrategyOverrides(
+        final Config config,
+        final String fieldPath,
+        final int tradingStrategyId
+    ) {
+        final Object value = config.get(fieldPath);
+        if (value == null) {
+            return new ExecutionStrategyOverrideConfig[0];
+        }
+        if (!(value instanceof List<?> list)) {
+            throw new ConfigValidationException(fieldPath, "expected array of override tables");
+        }
+
+        final ExecutionStrategyOverrideConfig[] overrides = new ExecutionStrategyOverrideConfig[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof Config override)) {
+                throw new ConfigValidationException(fieldPath, "expected override table at index " + i);
+            }
+            final String indexedPath = fieldPath + "[" + i + "]";
+            final int instrumentId = optionalInt(override, "instrumentId",
+                indexedPath + ".instrumentId", ExecutionStrategyOverrideConfig.ANY_INSTRUMENT);
+            final int venueId = optionalInt(override, "venueId",
+                indexedPath + ".venueId", ExecutionStrategyOverrideConfig.ANY_VENUE);
+            if (instrumentId == ExecutionStrategyOverrideConfig.ANY_INSTRUMENT
+                && venueId == ExecutionStrategyOverrideConfig.ANY_VENUE) {
+                throw new ConfigValidationException(indexedPath,
+                    "override must set instrumentId, venueId, or both");
+            }
+            final int executionStrategyId = ExecutionStrategyIds.parseCanonical(
+                requiredString(override, "executionStrategy", indexedPath + ".executionStrategy"),
+                indexedPath + ".executionStrategy");
+            validateExecutionStrategyCompatibility(tradingStrategyId, executionStrategyId,
+                indexedPath + ".executionStrategy");
+            for (int existing = 0; existing < i; existing++) {
+                if (overrides[existing].instrumentId() == instrumentId && overrides[existing].venueId() == venueId) {
+                    throw new ConfigValidationException(indexedPath,
+                        "duplicate execution strategy override for instrumentId=" + instrumentId
+                            + ", venueId=" + venueId);
+                }
+            }
+            overrides[i] = new ExecutionStrategyOverrideConfig(instrumentId, venueId, executionStrategyId);
+        }
+        return overrides;
+    }
+
+    private static void validateExecutionStrategyCompatibility(
+        final int tradingStrategyId,
+        final int executionStrategyId,
+        final String fieldPath
+    ) {
+        if (!ExecutionStrategyIds.isCompatible(tradingStrategyId, executionStrategyId)) {
+            throw new ConfigValidationException(fieldPath,
+                "execution strategy '" + ExecutionStrategyIds.nameOf(executionStrategyId)
+                    + "' is not compatible with trading strategy ID " + tradingStrategyId);
+        }
     }
 
     private static FixConfig loadFix(final Config config) {
@@ -380,6 +458,16 @@ public final class ConfigManager {
 
     private static int requiredInt(final Config config, final String key, final String fieldPath) {
         return Math.toIntExact(asLong(required(config.get(key), fieldPath), fieldPath));
+    }
+
+    private static int optionalInt(
+        final Config config,
+        final String key,
+        final String fieldPath,
+        final int defaultValue
+    ) {
+        final Object value = config.get(key);
+        return value == null ? defaultValue : Math.toIntExact(asLong(value, fieldPath));
     }
 
     private static long requiredLong(final Config config, final String fieldPath) {

@@ -2,6 +2,8 @@ package ig.rueishi.nitroj.exchange.strategy;
 
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderUpdateDecoder;
 
 /**
  * Plugin contract for deterministic cluster-side trading strategies.
@@ -44,5 +46,11 @@ public interface Strategy {
     }
 
     default void onTimer(final long correlationId) {
+    }
+
+    default void onParentUpdate(final ParentOrderUpdateDecoder decoder) {
+    }
+
+    default void onParentTerminal(final ParentOrderTerminalDecoder decoder) {
     }
 }

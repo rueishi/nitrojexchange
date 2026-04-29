@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:36" hostname="LAPTOP-PGTQL50G" time="0.625">
+  <properties/>
+  <testcase name="timerAndParentFailuresUseCountersNotExceptions()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.25"/>
+  <testcase name="terminalParentStateEmitsCallbackOnce()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.13"/>
+  <testcase name="childExecutionCancelTimerAndMarketDataDispatchInDeterministicOrder()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.054"/>
+  <testcase name="submitDispatchesCompatibleIntentAndCountsUnknownAndIncompatible()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.131"/>
+  <testcase name="registryRejectsInvalidDuplicateAndSupportsCompatibility()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.007"/>
+  <testcase name="initRegisteredStrategiesSuppliesContextAndStrategyContextAccessorExists()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngineTest" time="0.046"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.ArbStrategyE2ETest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:41" hostname="LAPTOP-PGTQL50G" time="0.051">
+  <properties/>
+  <testcase name="arbOpportunity_detected_bothLegsSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyE2ETest" time="0.014"/>
+  <testcase name="arbHedgeFails_killSwitchActivated()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyE2ETest" time="0.008"/>
+  <testcase name="arbLeg1FillLeg2Cancel_hedgeSubmitted()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyE2ETest" time="0.016"/>
+  <testcase name="arbLegTimeout_pendingLegCanceled_imbalanceHedged()" classname="ig.rueishi.nitroj.exchange.strategy.ArbStrategyE2ETest" time="0.01"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

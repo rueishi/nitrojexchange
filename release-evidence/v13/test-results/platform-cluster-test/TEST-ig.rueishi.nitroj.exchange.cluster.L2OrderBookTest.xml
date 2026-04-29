@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" tests="27" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.177">
+  <properties/>
+  <testcase name="priceAt_invalidLevel_throwsIndexOutOfBounds()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.006"/>
+  <testcase name="staleness_noUpdateAfterThreshold_isStaleTrue()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="getBestAsk_emptyBook_returnsInvalidSentinel()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="applyTradeEntry_noPriceLevelMutation()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="staleness_updateReceived_isStaleCleared()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.0"/>
+  <testcase name="insertAsk_singleLevel_bestAskCorrect()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="deleteMiddleLevel_remainingLevelsCompact()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="insertBid_singleLevel_bestBidCorrect()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="internalMarketView_l2OnlyUpdate_directlyUpdatesVenueL2()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.023"/>
+  <testcase name="insertAsk_multipleLevels_sortedAscending()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.002"/>
+  <testcase name="updateLevel_sizeToZero_levelRemoved()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="apply_afterArenaClosed_throwsIllegalState()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.002"/>
+  <testcase name="venueL3Book_derivedUpdate_updatesVenueL2AndConsolidatedL2()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.016"/>
+  <testcase name="insertAtMaxLevels_betterPrice_evictsWorstAndInserts()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="deleteBestBid_secondLevelBecomesBest()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="updateExistingLevel_sizeChanged_priceUnchanged()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="updateExistingLevel_repeatedSamePrice_noOrderIdStateAccumulated()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="deleteBestAsk_secondLevelBecomesBest()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.0"/>
+  <testcase name="internalMarketView_preallocateMarketState_rejectsInvalidConfiguredIds()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.026"/>
+  <testcase name="internalMarketView_preallocateMarketState_allocatesConfiguredBooks()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.018"/>
+  <testcase name="insertAtMaxLevels_worsePrice_discarded()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.002"/>
+  <testcase name="internalMarketView_unknownVenueInstrument_findReturnsNullAndInvalidPrices()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.014"/>
+  <testcase name="offHeap_noGCPressure_heapUnchanged()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.026"/>
+  <testcase name="getBestBid_emptyBook_returnsInvalidSentinel()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.003"/>
+  <testcase name="deleteMissingLevel_existingLevelsUnchanged()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="insertBid_multipleLevels_sortedDescending()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.001"/>
+  <testcase name="internalMarketView_firstConfiguredTick_usesPreallocatedBooks()" classname="ig.rueishi.nitroj.exchange.cluster.L2OrderBookTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

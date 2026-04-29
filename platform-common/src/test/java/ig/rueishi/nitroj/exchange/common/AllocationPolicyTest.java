@@ -15,12 +15,14 @@ final class AllocationPolicyTest {
     private static final Set<String> REQUIRED_IMPLEMENTED_BENCHMARK_OWNERS = Set.of(
         "BookMutationBenchmark",
         "ExecutionReportBenchmark",
+        "ExecutionStrategyEngineBenchmark",
         "FixL2NormalizerBenchmark",
         "FixL3NormalizerBenchmark",
         "GatewayHandoffBenchmark",
         "OrderEncodingBenchmark",
         "OrderManagerBenchmark",
         "OwnLiquidityBenchmark",
+        "ParentOrderRegistryBenchmark",
         "RiskDecisionBenchmark",
         "SbeCodecBenchmark",
         "StrategyTickBenchmark"
@@ -86,6 +88,9 @@ final class AllocationPolicyTest {
                 AllocationPolicy.HotPath.STRATEGY_ENGINE_DISPATCH,
                 AllocationPolicy.HotPath.MARKET_MAKING_STRATEGY_TICK,
                 AllocationPolicy.HotPath.ARB_STRATEGY_TICK,
+                AllocationPolicy.HotPath.PARENT_ORDER_REGISTRY_UPDATE_QUERY,
+                AllocationPolicy.HotPath.PARENT_ACTIVE_CHILD_LOOKUP,
+                AllocationPolicy.HotPath.EXECUTION_STRATEGY_ENGINE_DISPATCH,
                 AllocationPolicy.HotPath.ORDER_COMMAND_ENCODING);
         assertThat(EnumSet.allOf(AllocationPolicy.ColdPath.class))
             .contains(

@@ -10,7 +10,7 @@
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="ig.rueishi.nitroj.exchange.messages"
                    id="1"
-                   version="1"
+                   version="2"
                    semanticVersion="5.2"
                    description="Trading Platform Internal Events"
                    byteOrder="littleEndian">
@@ -46,6 +46,7 @@
     <type name="instrumentId" primitiveType="int32" description="Registry-assigned instrument int ID"/>
     <type name="strategyId" primitiveType="int16" description="Strategy int constant"/>
     <type name="clOrdIdType" primitiveType="int64" description="cluster.logPosition()-based order ID"/>
+    <type name="parentOrderIdType" primitiveType="int64" presence="optional" nullValue="0" description="Cluster parent-order ID. 0 means no parent."/>
 
     <!--
       Standard SBE variable-length string encoding.
@@ -115,6 +116,36 @@
       <validValue name="RESUME_STRATEGY">4</validValue>
       <validValue name="RESET_DAILY_COUNTERS">5</validValue>
       <validValue name="TRIGGER_SNAPSHOT">6</validValue>
+    </enum>
+    <enum name="ParentIntentType" encodingType="int8">
+      <validValue name="IMMEDIATE_LIMIT">1</validValue>
+      <validValue name="QUOTE">2</validValue>
+      <validValue name="MULTI_LEG">3</validValue>
+      <validValue name="CANCEL_PARENT">4</validValue>
+    </enum>
+    <enum name="PriceMode" encodingType="int8">
+      <validValue name="LIMIT">1</validValue>
+      <validValue name="REFERENCE">2</validValue>
+    </enum>
+    <enum name="ParentUpdateReason" encodingType="int8">
+      <validValue name="CHILD_ACCEPTED">1</validValue>
+      <validValue name="CHILD_PARTIAL_FILL">2</validValue>
+      <validValue name="CHILD_FILL">3</validValue>
+      <validValue name="CHILD_REJECT">4</validValue>
+      <validValue name="CHILD_CANCEL">5</validValue>
+      <validValue name="TIMER">6</validValue>
+      <validValue name="HEDGE_SUBMITTED">7</validValue>
+    </enum>
+    <enum name="ParentTerminalReason" encodingType="int8">
+      <validValue name="COMPLETED">1</validValue>
+      <validValue name="CANCELED_BY_PARENT">2</validValue>
+      <validValue name="EXPIRED">3</validValue>
+      <validValue name="RISK_REJECTED">4</validValue>
+      <validValue name="CHILD_REJECTED">5</validValue>
+      <validValue name="HEDGE_FAILED">6</validValue>
+      <validValue name="KILL_SWITCH">7</validValue>
+      <validValue name="EXECUTION_ABORTED">8</validValue>
+      <validValue name="CAPACITY_REJECTED">9</validValue>
     </enum>
   </types>
 
@@ -186,6 +217,55 @@
     <field name="priceScaled" id="7" type="priceScaled"/>
     <field name="qtyScaled" id="8" type="qtyScaled"/>
     <field name="strategyId" id="9" type="strategyId"/>
+    <field name="parentOrderId" id="10" type="parentOrderIdType" sinceVersion="2" description="Internal parent attribution only; gateway must not send to venue FIX unless a venue explicitly supports it."/>
+  </sbe:message>
+
+  <sbe:message name="ParentOrderIntent" id="40" description="Declarative parent-order intent from trading strategy to execution strategy">
+    <field name="parentOrderId" id="1" type="parentOrderIdType"/>
+    <field name="strategyId" id="2" type="strategyId"/>
+    <field name="executionStrategyId" id="3" type="int32"/>
+    <field name="intentType" id="4" type="ParentIntentType"/>
+    <field name="side" id="5" type="Side"/>
+    <field name="instrumentId" id="6" type="instrumentId"/>
+    <field name="primaryVenueId" id="7" type="venueId"/>
+    <field name="secondaryVenueId" id="8" type="venueId"/>
+    <field name="quantityScaled" id="9" type="qtyScaled"/>
+    <field name="priceMode" id="10" type="PriceMode"/>
+    <field name="limitPriceScaled" id="11" type="priceScaled"/>
+    <field name="referencePriceScaled" id="12" type="priceScaled"/>
+    <field name="timeInForcePreference" id="13" type="TimeInForce"/>
+    <field name="urgencyHint" id="14" type="int8"/>
+    <field name="postOnlyPreference" id="15" type="BooleanType"/>
+    <field name="selfTradePolicy" id="16" type="int8"/>
+    <field name="correlationId" id="17" type="int64"/>
+    <field name="legCount" id="18" type="int8"/>
+    <field name="leg2Side" id="19" type="Side"/>
+    <field name="leg2LimitPriceScaled" id="20" type="priceScaled"/>
+    <field name="parentTimeoutMicros" id="21" type="clusterMicros"/>
+  </sbe:message>
+
+  <sbe:message name="ParentOrderUpdate" id="41" description="Deterministic non-terminal parent-order update">
+    <field name="parentOrderId" id="1" type="parentOrderIdType"/>
+    <field name="strategyId" id="2" type="strategyId"/>
+    <field name="executionStrategyId" id="3" type="int32"/>
+    <field name="cumFillQtyScaled" id="4" type="qtyScaled"/>
+    <field name="avgFillPriceScaled" id="5" type="priceScaled"/>
+    <field name="leavesQtyScaled" id="6" type="qtyScaled"/>
+    <field name="workingChildCount" id="7" type="int32"/>
+    <field name="lastChildClOrdId" id="8" type="clOrdIdType"/>
+    <field name="updateReason" id="9" type="ParentUpdateReason"/>
+    <field name="eventClusterTime" id="10" type="clusterMicros"/>
+  </sbe:message>
+
+  <sbe:message name="ParentOrderTerminal" id="42" description="Deterministic terminal parent-order update">
+    <field name="parentOrderId" id="1" type="parentOrderIdType"/>
+    <field name="strategyId" id="2" type="strategyId"/>
+    <field name="executionStrategyId" id="3" type="int32"/>
+    <field name="finalCumFillQtyScaled" id="4" type="qtyScaled"/>
+    <field name="avgFillPriceScaled" id="5" type="priceScaled"/>
+    <field name="terminalReason" id="6" type="ParentTerminalReason"/>
+    <field name="lastChildClOrdId" id="7" type="clOrdIdType"/>
+    <field name="eventClusterTime" id="8" type="clusterMicros"/>
   </sbe:message>
 
   <sbe:message name="CancelOrderCommand" id="11" description="Cancel request to gateway">
@@ -291,7 +371,8 @@
     <field name="leavesQtyScaled" id="12" type="qtyScaled"/>
     <field name="avgFillPriceScaled" id="13" type="priceScaled"/>
     <field name="createdClusterTime" id="14" type="clusterMicros"/>
-    <data name="venueOrderId" id="15" type="varStringEncoding"/>
+    <field name="parentOrderId" id="15" type="parentOrderIdType" sinceVersion="2" description="Internal parent attribution only; 0 means no parent."/>
+    <data name="venueOrderId" id="16" type="varStringEncoding"/>
   </sbe:message>
 
   <sbe:message name="PositionSnapshot" id="51">

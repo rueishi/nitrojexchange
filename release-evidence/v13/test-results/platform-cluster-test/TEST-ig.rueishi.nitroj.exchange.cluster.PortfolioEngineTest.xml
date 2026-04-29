@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.034">
+  <properties/>
+  <testcase name="snapshot_multiplePositions_allRestored()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.002"/>
+  <testcase name="unrealizedPnl_zeroPosition_alwaysZero()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="netQtyZero_afterFullClose_avgPriceZero()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="multipleFills_sameSide_vwapAccumulates()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <testcase name="sell_exactlyClosesLong_netQtyZero()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="unrealizedPnl_longPosition_markAboveEntry_positive()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="sell_longClose_realizedPnlCorrect()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <testcase name="buy_shortCover_realizedPnlCorrect()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="snapshot_positionPreserved()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="buy_twoFills_vwapAvgPrice()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="refreshUnrealizedPnl_updatesTotalUnrealizedPnl()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="initPosition_preAllocatesForAllPairs_noFirstFillAllocation()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="riskEngine_notifiedAfterEachFill()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="unrealizedPnl_longPosition_markBelowEntry_negative()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="sell_closesLongAndGoesShort_residualQtyHandled()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="buy_longPosition_avgPriceCorrect()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="buy_exactlyClosesShort_netQtyZero()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="buy_closesShortAndGoesLong_residualQtyHandled()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="unrealizedPnl_shortPosition_markAboveEntry_negative()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <testcase name="snapshot_realizedPnlPreserved()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.001"/>
+  <testcase name="overflowProtection_largePriceAndQty_noSilentWrap()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <testcase name="sell_shortOpen_avgPriceTracked()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <testcase name="unrealizedPnl_shortPosition_markBelowEntry_positive()" classname="ig.rueishi.nitroj.exchange.cluster.PortfolioEngineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

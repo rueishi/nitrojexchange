@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.01">
+  <properties/>
+  <testcase name="claimLookupAndTransition_mutateBoundedParentState()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.002"/>
+  <testcase name="terminalReasonAndReleaseRequireNoActiveChildren()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.001"/>
+  <testcase name="duplicateClaimReturnsExistingAndIncrementsCounter()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.001"/>
+  <testcase name="childLinkUnlinkAndActiveChildLookupAreDeterministic()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.0"/>
+  <testcase name="duplicateUnknownAndCapacityChildLinksUseCounters()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.0"/>
+  <testcase name="invalidParentClaimReturnsNullAndCountsReject()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.001"/>
+  <testcase name="parentCapacityFullReturnsNullAndCountsReject()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.0"/>
+  <testcase name="constructorRejectsInvalidCapacitiesAndSnapshotMismatch()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.002"/>
+  <testcase name="snapshotLoadRoundTripPreservesStateLinksAndCounters()" classname="ig.rueishi.nitroj.exchange.execution.ParentOrderRegistryTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

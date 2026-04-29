@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.134">
+  <properties/>
+  <testcase name="balanceResponse_routedToRecoveryCoordinator()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.014"/>
+  <testcase name="onMarketData_bookUpdatedBeforeStrategyDispatched()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.017"/>
+  <testcase name="unknownTemplateId_warnLogged_noException()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.011"/>
+  <testcase name="onExecution_fill_riskBeforeStrategy()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.015"/>
+  <testcase name="adminCommand_routedToAdminCommandHandler()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.009"/>
+  <testcase name="onExecution_fill_portfolioBeforeRisk()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.017"/>
+  <testcase name="venueStatus_routedToRecoveryCoordinator()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.014"/>
+  <testcase name="onExecution_nonFill_portfolioAndRiskNotCalled()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.017"/>
+  <testcase name="onExecution_fill_orderManagerBeforePortfolio()" classname="ig.rueishi.nitroj.exchange.cluster.MessageRouterTest" time="0.01"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

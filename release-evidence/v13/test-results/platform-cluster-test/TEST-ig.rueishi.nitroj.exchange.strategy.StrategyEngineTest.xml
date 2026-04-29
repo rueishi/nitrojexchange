@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:42" hostname="LAPTOP-PGTQL50G" time="0.12">
+  <properties/>
+  <testcase name="onExecution_inactiveButFill_onFillNotCalled()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="register_afterSetActive_newStrategyActivatedCorrectly()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.012"/>
+  <testcase name="register_strategyAddedToList()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="setActive_false_callsOnKillSwitchOnAllStrategies()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.011"/>
+  <testcase name="onMarketData_inactive_noDispatch()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="resumeStrategy_specificStrategy_resumes()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.011"/>
+  <testcase name="pauseStrategy_unknownId_noEffect()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="setCluster_reinitializesStrategiesWithClusterAwareContext()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.012"/>
+  <testcase name="setActive_true_strategiesReceiveKillSwitchCleared()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="pauseStrategy_specificStrategy_otherStrategiesUnaffected()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.012"/>
+  <testcase name="onTimer_inactive_stillRouted_clusterDeterminism()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.007"/>
+  <testcase name="setActive_sameValue_idempotent()" classname="ig.rueishi.nitroj.exchange.strategy.StrategyEngineTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

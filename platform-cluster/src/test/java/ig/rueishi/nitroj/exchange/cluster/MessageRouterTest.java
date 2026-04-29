@@ -51,7 +51,7 @@ final class MessageRouterTest {
 
         harness.router.dispatch(buffer, 0, MarketDataEventEncoder.BLOCK_LENGTH, MarketDataEventEncoder.SCHEMA_VERSION, MessageHeaderEncoder.ENCODED_LENGTH, MarketDataEventEncoder.TEMPLATE_ID);
 
-        assertThat(calls).containsExactly("strategy-market");
+        assertThat(calls).containsExactly("strategy-market:1");
         assertThat(harness.marketView.getBestBid(Ids.VENUE_COINBASE, Ids.INSTRUMENT_BTC_USD)).isEqualTo(65_000L * Ids.SCALE);
     }
 
@@ -235,6 +235,7 @@ final class MessageRouterTest {
 
     private record RecordingStrategy(List<String> calls) implements MessageRouter.StrategyDispatch, StrategyEngineControl {
         @Override public void onMarketData(final MarketDataEventDecoder decoder) { calls.add("strategy-market"); }
+        @Override public void onMarketData(final MarketDataEventDecoder decoder, final long clusterTimeMicros) { calls.add("strategy-market:" + clusterTimeMicros); }
         @Override public void onExecution(final ExecutionEventDecoder decoder, final boolean isFill) { calls.add("strategy-exec:" + isFill); }
         @Override public void pauseStrategy(final int strategyId) { }
         @Override public void resumeStrategy(final int strategyId) { }

@@ -1,0 +1,35 @@
+# NitroJEx V13 strategy-to-execution-strategy selection examples.
+#
+# Cluster node TOML carries the active strategy configuration today. This file
+# documents the standalone V13 shape for operators and future multi-instance
+# strategy loading.
+#
+# Defaults:
+#   MarketMaking -> PostOnlyQuote
+#   Arb          -> MultiLegContingent
+#   one-shot     -> ImmediateLimit
+#
+# Unknown executionStrategy IDs and incompatible trading/execution pairings must
+# fail startup validation. Overrides are startup/cold-path configuration; the
+# cluster hot path dispatches by numeric execution strategy ID.
+
+[[strategy]]
+id = "mm-btc-coinbase"
+type = "MarketMaking"
+executionStrategy = "PostOnlyQuote"
+instrumentId = 1
+venueId = 1
+
+# Optional per-instrument/per-venue override. Use this only when the same
+# trading intent should be worked differently for one instrument or venue.
+  [[strategy.executionOverride]]
+  instrumentId = 2
+  venueId = 1
+  executionStrategy = "PostOnlyQuote"
+
+[[strategy]]
+id = "arb-btc-cross-venue"
+type = "Arb"
+executionStrategy = "MultiLegContingent"
+instrumentId = 1
+venueIds = [1, 2]

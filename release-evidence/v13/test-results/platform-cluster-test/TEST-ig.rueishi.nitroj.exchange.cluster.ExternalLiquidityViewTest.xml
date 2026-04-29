@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.109">
+  <properties/>
+  <testcase name="externalSize_l2Approximation_subtractsOwnLevel()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.018"/>
+  <testcase name="externalSize_noOwnOrders_returnsGrossSize()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.009"/>
+  <testcase name="externalSize_l3MissingId_keepsGrossOrderSize()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.014"/>
+  <testcase name="externalBestAsk_unknownBook_returnsInvalidPrice()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.008"/>
+  <testcase name="externalSize_ownSizeExceedsGross_returnsZero()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.015"/>
+  <testcase name="externalSize_l3ExactMatch_subtractsVenueOrderId()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.008"/>
+  <testcase name="externalBestBid_skipsFullyOwnBestLevel()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.015"/>
+  <testcase name="externalSize_rejectedOrTerminalCleanup_removesOwnLiquidity()" classname="ig.rueishi.nitroj.exchange.cluster.ExternalLiquidityViewTest" time="0.014"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

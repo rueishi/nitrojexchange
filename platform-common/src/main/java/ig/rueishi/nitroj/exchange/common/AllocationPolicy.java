@@ -52,6 +52,12 @@ public final class AllocationPolicy {
         STRATEGY_ENGINE_DISPATCH("StrategyEngine dispatch", "StrategyTickBenchmark"),
         MARKET_MAKING_STRATEGY_TICK("MarketMakingStrategy tick", "StrategyTickBenchmark"),
         ARB_STRATEGY_TICK("ArbStrategy tick", "StrategyTickBenchmark"),
+        PARENT_ORDER_REGISTRY_UPDATE_QUERY("ParentOrderRegistry update/query", "ParentOrderRegistryBenchmark"),
+        PARENT_ACTIVE_CHILD_LOOKUP("parent-to-child lookup", "ParentOrderRegistryBenchmark"),
+        EXECUTION_STRATEGY_ENGINE_DISPATCH("ExecutionStrategyEngine dispatch", "ExecutionStrategyEngineBenchmark"),
+        IMMEDIATE_LIMIT_EXECUTION_CALLBACK("ImmediateLimitExecution callback", "ImmediateLimitExecutionBenchmark"),
+        POST_ONLY_QUOTE_EXECUTION_CALLBACK("PostOnlyQuoteExecution callback", "PostOnlyQuoteExecutionBenchmark"),
+        MULTI_LEG_CONTINGENT_EXECUTION_CALLBACK("MultiLegContingentExecution callback", "MultiLegContingentExecutionBenchmark"),
         ORDER_COMMAND_ENCODING("order command encoding", "OrderEncodingBenchmark");
 
         private final String documentedName;

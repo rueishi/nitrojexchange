@@ -28,6 +28,33 @@ public record MarketMakingConfig(
     long maxTolerableSpreadBps,
     long tickSizeScaled,
     long lotSizeScaled,
-    long minQuoteSizeFractionBps
+    long minQuoteSizeFractionBps,
+    ExecutionStrategySelectionConfig executionStrategy
 ) {
+    public MarketMakingConfig(
+        final int instrumentId,
+        final int venueId,
+        final long targetSpreadBps,
+        final long inventorySkewFactorBps,
+        final long baseQuoteSizeScaled,
+        final long maxQuoteSizeScaled,
+        final long maxPositionLongScaled,
+        final long maxPositionShortScaled,
+        final long refreshThresholdBps,
+        final long maxQuoteAgeMicros,
+        final long marketDataStalenessThresholdMicros,
+        final long wideSpreadThresholdBps,
+        final long maxTolerableSpreadBps,
+        final long tickSizeScaled,
+        final long lotSizeScaled,
+        final long minQuoteSizeFractionBps
+    ) {
+        this(instrumentId, venueId, targetSpreadBps, inventorySkewFactorBps, baseQuoteSizeScaled,
+            maxQuoteSizeScaled, maxPositionLongScaled, maxPositionShortScaled, refreshThresholdBps,
+            maxQuoteAgeMicros, marketDataStalenessThresholdMicros, wideSpreadThresholdBps,
+            maxTolerableSpreadBps, tickSizeScaled, lotSizeScaled, minQuoteSizeFractionBps,
+            new ExecutionStrategySelectionConfig(
+                ExecutionStrategyIds.POST_ONLY_QUOTE,
+                new ExecutionStrategyOverrideConfig[0]));
+    }
 }

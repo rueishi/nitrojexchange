@@ -1,0 +1,45 @@
+# NitroJEx V13 local evidence gate.
+#
+# This file documents the automated and manual evidence required before real
+# Coinbase QA/UAT. It is intentionally simulator-only: live credentials and live
+# venue sessions are outside this preflight.
+
+[scope]
+release = "V13.0"
+baseline = "V12 low-latency evidence baseline"
+qaUatBlockedUntilPass = true
+liveCoinbaseConnectivity = false
+
+[automated]
+commands = [
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew clean",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew check",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew e2eTest",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmh",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:jmhLatencyReport",
+  "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :platform-benchmarks:verifyJmhReports"
+]
+
+[evidence]
+required = [
+  "V12 preflight artifacts",
+  "parent intent and parent terminal tests",
+  "ParentOrderRegistry snapshot/load evidence",
+  "OrderState.parentOrderId child attribution evidence",
+  "deterministic parent replay evidence",
+  "V12-to-V13 behavior equivalence evidence",
+  "local Coinbase simulator parent-intent E2E evidence",
+  "JMH allocation and latency reports for parent/execution hot paths",
+  "parent stuck, child stuck, hedge rejected, post-only reject loop, capacity full, and rollback runbook signoff"
+]
+
+[blockers]
+qaUatBlockers = [
+  "unknown execution strategy startup failure not tested",
+  "incompatible trading/execution pair not tested",
+  "parent/child attribution mismatch unreconciled",
+  "hedge rejection without kill-switch evidence",
+  "non-zero hot-path allocation not remediated or reclassified",
+  "missing live-wire parent-intent E2E evidence",
+  "missing rollback-to-V12 rehearsal evidence"
+]

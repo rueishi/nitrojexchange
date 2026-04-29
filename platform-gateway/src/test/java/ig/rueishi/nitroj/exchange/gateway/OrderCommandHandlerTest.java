@@ -93,6 +93,28 @@ final class OrderCommandHandlerTest {
             .contains(tag("1=ACC1"));
     }
 
+    /** Verifies V13 parent IDs remain internal attribution data and are not emitted to venue FIX. */
+    @Test
+    void newOrderCommand_parentOrderIdPreservedInternally_butNotSentToFIX() {
+        final Harness harness = new Harness();
+        final EncodedMessage encoded = newOrderMessageWithParent(1009L, 987_654_321_234L);
+        final ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder header =
+            new ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder();
+        final NewOrderCommandDecoder decoder = new NewOrderCommandDecoder();
+        decoder.wrapAndApplyHeader(encoded.buffer, 0, header);
+
+        assertThat(decoder.parentOrderId()).isEqualTo(987_654_321_234L);
+
+        harness.router.routeNewOrder(decoder);
+
+        assertThat(harness.sender.sent).hasSize(1);
+        assertThat(harness.sender.sent.getFirst())
+            .contains(tag("35=D"))
+            .contains(tag("11=1009"))
+            .doesNotContain("987654321234")
+            .doesNotContain(tag("ParentOrderId=987654321234"));
+    }
+
     /** Verifies CancelOrderCommand becomes FIX MsgType F. */
     @Test
     void cancelCommand_producesCorrectFIXCancelRequest() {
@@ -333,6 +355,23 @@ final class OrderCommandHandlerTest {
         final UnsafeBuffer buffer = new UnsafeBuffer(new byte[256]);
         final int length = putNewOrder(buffer, 0, clOrdId, side, ordType);
         return new EncodedMessage(buffer, length);
+    }
+
+    static EncodedMessage newOrderMessageWithParent(final long clOrdId, final long parentOrderId) {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[256]);
+        final NewOrderCommandEncoder encoder = new NewOrderCommandEncoder();
+        encoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .clOrdId(clOrdId)
+            .venueId(VENUE_ID)
+            .instrumentId(INSTRUMENT_ID)
+            .side(Side.BUY)
+            .ordType(OrdType.LIMIT)
+            .timeInForce(TimeInForce.GTC)
+            .priceScaled(6_500_000_000_000L)
+            .qtyScaled(50_000_000L)
+            .strategyId((short)7)
+            .parentOrderId(parentOrderId);
+        return new EncodedMessage(buffer, MessageHeaderEncoder.ENCODED_LENGTH + encoder.encodedLength());
     }
 
     static int putNewOrder(

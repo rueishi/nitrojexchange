@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:37" hostname="LAPTOP-PGTQL50G" time="0.013">
+  <properties/>
+  <testcase name="dailyReset_doesNotClearKillSwitch()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.004"/>
+  <testcase name="computeNextMidnight_justBeforeMidnight_returnsNextMidnight()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.001"/>
+  <testcase name="onTimer_correctCorrelId_resetsCountersAndReschedules()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.0"/>
+  <testcase name="computeNextMidnight_atMidnight_returnsFollowingMidnight()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.001"/>
+  <testcase name="onTimer_wrongCorrelId_noAction()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.001"/>
+  <testcase name="scheduleNextReset_schedulesAtNextMidnightUtc()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.0"/>
+  <testcase name="computeNextMidnight_midday_returnsNextMidnight()" classname="ig.rueishi.nitroj.exchange.cluster.DailyResetTimerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

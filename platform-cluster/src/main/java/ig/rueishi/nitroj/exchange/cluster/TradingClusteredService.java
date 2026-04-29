@@ -4,6 +4,7 @@ import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.order.OrderManager;
+import ig.rueishi.nitroj.exchange.execution.ClusterBackedExecutionClock;
 import ig.rueishi.nitroj.exchange.strategy.StrategyEngineControl;
 import io.aeron.ExclusivePublication;
 import io.aeron.Image;
@@ -40,6 +41,7 @@ public final class TradingClusteredService implements ClusteredService {
     private final RecoveryCoordinator recoveryCoordinator;
     private final DailyResetTimer dailyResetTimer;
     private final MessageRouter router;
+    private final ClusterBackedExecutionClock executionClock;
     private final MessageHeaderDecoder headerDecoder = new MessageHeaderDecoder();
     private Cluster cluster;
 
@@ -68,6 +70,19 @@ public final class TradingClusteredService implements ClusteredService {
         final DailyResetTimer dailyResetTimer,
         final MessageRouter router
     ) {
+        this(strategyEngine, riskEngine, orderManager, portfolioEngine, recoveryCoordinator, dailyResetTimer, router, null);
+    }
+
+    public TradingClusteredService(
+        final StrategyLifecycle strategyEngine,
+        final RiskEngine riskEngine,
+        final OrderManager orderManager,
+        final PortfolioEngine portfolioEngine,
+        final RecoveryCoordinator recoveryCoordinator,
+        final DailyResetTimer dailyResetTimer,
+        final MessageRouter router,
+        final ClusterBackedExecutionClock executionClock
+    ) {
         this.strategyEngine = Objects.requireNonNull(strategyEngine, "strategyEngine");
         this.riskEngine = Objects.requireNonNull(riskEngine, "riskEngine");
         this.orderManager = Objects.requireNonNull(orderManager, "orderManager");
@@ -75,6 +90,7 @@ public final class TradingClusteredService implements ClusteredService {
         this.recoveryCoordinator = Objects.requireNonNull(recoveryCoordinator, "recoveryCoordinator");
         this.dailyResetTimer = Objects.requireNonNull(dailyResetTimer, "dailyResetTimer");
         this.router = Objects.requireNonNull(router, "router");
+        this.executionClock = executionClock;
     }
 
     /**
@@ -285,6 +301,9 @@ public final class TradingClusteredService implements ClusteredService {
         recoveryCoordinator.setCluster(cluster);
         dailyResetTimer.setCluster(cluster);
         router.setCluster(cluster);
+        if (executionClock != null) {
+            executionClock.setCluster(cluster);
+        }
     }
 
     private void removeClusterReference() {

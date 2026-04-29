@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.126">
+  <properties/>
+  <testcase name="idCollision_exactByteComparisonKeepsOrdersDistinct()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.004"/>
+  <testcase name="zeroSizeChange_existingOrder_removesOrder()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.003"/>
+  <testcase name="priceMove_existingOrder_removesOldLevelAndAddsNewLevel()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="delete_existingOrder_removesOrderAndDerivedLevel()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="change_existingOrder_preservesQueuePosition()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.005"/>
+  <testcase name="delete_missingOrder_returnsFalseAndKeepsBook()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="duplicateAdd_existingOrder_replacesPreviousContribution()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.003"/>
+  <testcase name="sideMove_existingOrder_removesOldSideAndAddsNewSide()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="add_twoOrdersSameBidPrice_aggregatesDerivedL2()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="change_missingOrder_returnsFalseAndKeepsBook()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="invalidCapacity_throwsClearly()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.002"/>
+  <testcase name="mismatchedVenue_throwsIllegalArgumentException()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.003"/>
+  <testcase name="change_existingOrder_replacesPreviousContribution()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="capacityExceeded_newOrderRejectedWithoutMutatingExistingState()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.001"/>
+  <testcase name="exactOwnOrderLookup_subtractsOnlyMatchingOwnOrder()" classname="ig.rueishi.nitroj.exchange.cluster.VenueL3BookTest" time="0.013"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

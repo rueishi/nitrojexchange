@@ -37,6 +37,12 @@ final class BenchmarkSurfaceMapTest {
                 "StrategyEngine dispatch",
                 "MarketMakingStrategy tick",
                 "ArbStrategy tick",
+                "ParentOrderRegistry update/query",
+                "parent-to-child lookup",
+                "ExecutionStrategyEngine dispatch",
+                "ImmediateLimitExecution callback",
+                "PostOnlyQuoteExecution callback",
+                "MultiLegContingentExecution callback",
                 "order command encoding");
 
         assertThat(AllocationPolicy.HotPath.values())
@@ -55,8 +61,13 @@ final class BenchmarkSurfaceMapTest {
             "OrderEncodingBenchmark",
             "OrderManagerBenchmark",
             "OwnLiquidityBenchmark",
+            "ParentOrderRegistryBenchmark",
             "RiskDecisionBenchmark",
             "SbeCodecBenchmark",
+            "ExecutionStrategyEngineBenchmark",
+            "ImmediateLimitExecutionBenchmark",
+            "PostOnlyQuoteExecutionBenchmark",
+            "MultiLegContingentExecutionBenchmark",
             "StrategyTickBenchmark"
         );
 

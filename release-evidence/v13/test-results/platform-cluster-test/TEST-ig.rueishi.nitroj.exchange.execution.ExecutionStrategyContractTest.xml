@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.057">
+  <properties/>
+  <testcase name="childExecutionViewExposesDeterministicPrimitiveFields()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.002"/>
+  <testcase name="flyweightViewsRejectNullDecoders()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.002"/>
+  <testcase name="contextRejectsNullDependenciesAtStartupBoundary()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.012"/>
+  <testcase name="contextExposesDeterministicDependenciesClockAndTimer()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.019"/>
+  <testcase name="flyweightViewsExposeNoStringReturningHotPathAccessors()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.004"/>
+  <testcase name="parentIntentViewReusesOneFlyweightForDifferentDecoders()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.0"/>
+  <testcase name="executionStrategyLifecycleCanInitializeAndReceiveCallbacks()" classname="ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContractTest" time="0.013"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

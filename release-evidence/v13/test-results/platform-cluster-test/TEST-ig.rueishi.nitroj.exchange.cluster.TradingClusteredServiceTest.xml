@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" tests="16" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.217">
+  <properties/>
+  <testcase name="onTimerEvent_unknownCorrelId_ignoredSilently()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.015"/>
+  <testcase name="onRoleChange_toLeaderTwice_idempotent()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.014"/>
+  <testcase name="onRoleChange_toLeader_strategiesActivated()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.013"/>
+  <testcase name="onRoleChange_toFollower_strategiesDeactivated()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.011"/>
+  <testcase name="installClusterShim_realClusterAlreadySet_throws()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.014"/>
+  <testcase name="onTimerEvent_recoveryBalanceQueryTimeoutId_timerForwarded()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.009"/>
+  <testcase name="onStart_withSnapshot_stateRestored()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.019"/>
+  <testcase name="resetWarmupState_allComponentsReset()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.012"/>
+  <testcase name="removeClusterShim_clusterNullInAllComponents()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.016"/>
+  <testcase name="onStart_nullSnapshot_allStateZeroed()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.009"/>
+  <testcase name="onTimerEvent_arbTimeoutId_timerForwarded()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.012"/>
+  <testcase name="onTimerEvent_dailyResetId_timerForwarded()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.009"/>
+  <testcase name="onTakeSnapshot_writesAllComponentsInOrder()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.013"/>
+  <testcase name="onSessionMessage_marketData_routedThroughHeaderDecoder()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.01"/>
+  <testcase name="installClusterShim_propagatedToAllComponents()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.014"/>
+  <testcase name="onTimerEvent_recoveryOrderQueryTimeoutId_timerForwarded()" classname="ig.rueishi.nitroj.exchange.cluster.TradingClusteredServiceTest" time="0.014"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

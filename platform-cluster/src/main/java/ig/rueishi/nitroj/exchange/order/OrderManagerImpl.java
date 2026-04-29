@@ -92,12 +92,11 @@ public final class OrderManagerImpl implements OrderManager {
     }
 
     /**
-     * Creates a new live order in {@link OrderStatus#PENDING_NEW}.
+     * Creates a new unparented live order in {@link OrderStatus#PENDING_NEW}.
      *
-     * <p>Strategies call this after risk approval and before the gateway reports
-     * the venue acknowledgement. The method claims a pooled state object, fills
-     * immutable order attributes, initializes leaves quantity to the order
-     * quantity, and records cluster time for later snapshot/recovery use.</p>
+     * <p>This preserves the V12 external contract and stores parent ID {@code 0}
+     * as the explicit unparented sentinel. V13 execution strategies call the
+     * overload that supplies a real parent order ID.</p>
      */
     @Override
     public void createPendingOrder(
@@ -111,8 +110,36 @@ public final class OrderManagerImpl implements OrderManager {
         final long qtyScaled,
         final int strategyId
     ) {
+        createPendingOrder(clOrdId, venueId, instrumentId, side, ordType, timeInForce,
+            priceScaled, qtyScaled, strategyId, 0L);
+    }
+
+    /**
+     * Creates a new live child order in {@link OrderStatus#PENDING_NEW}.
+     *
+     * <p>Strategies call this after risk approval and before the gateway reports
+     * the venue acknowledgement. The method claims a pooled state object, fills
+     * immutable order attributes, initializes leaves quantity to the order
+     * quantity, records parent attribution, and records cluster time for later
+     * snapshot/recovery use. Parent ID {@code 0} is reserved for unparented
+     * children and remains valid for V12-compatible callers.</p>
+     */
+    @Override
+    public void createPendingOrder(
+        final long clOrdId,
+        final int venueId,
+        final int instrumentId,
+        final byte side,
+        final byte ordType,
+        final byte timeInForce,
+        final long priceScaled,
+        final long qtyScaled,
+        final int strategyId,
+        final long parentOrderId
+    ) {
         final OrderState order = pool.claim();
         order.clOrdId = clOrdId;
+        order.parentOrderId = parentOrderId;
         order.venueId = venueId;
         order.instrumentId = instrumentId;
         order.strategyId = strategyId;
@@ -365,6 +392,7 @@ public final class OrderManagerImpl implements OrderManager {
         return seenExecIds.size();
     }
 
+    @Override
     public void markCancelSent(final long clOrdId) {
         final OrderState order = liveOrders.get(clOrdId);
         if (order != null && !OrderStatus.isTerminal(order.status)) {
@@ -384,6 +412,7 @@ public final class OrderManagerImpl implements OrderManager {
         snapshotEncoder
             .wrapAndApplyHeader(buffer, offset, headerEncoder)
             .clOrdId(order.clOrdId)
+            .parentOrderId(order.parentOrderId)
             .venueId(order.venueId)
             .instrumentId(order.instrumentId)
             .strategyId((short) order.strategyId)
@@ -405,6 +434,7 @@ public final class OrderManagerImpl implements OrderManager {
         snapshotDecoder.wrapAndApplyHeader(buffer, offset, headerDecoder);
         final OrderState order = pool.claim();
         order.clOrdId = snapshotDecoder.clOrdId();
+        order.parentOrderId = snapshotDecoder.parentOrderId();
         order.venueId = snapshotDecoder.venueId();
         order.instrumentId = snapshotDecoder.instrumentId();
         order.strategyId = snapshotDecoder.strategyId();

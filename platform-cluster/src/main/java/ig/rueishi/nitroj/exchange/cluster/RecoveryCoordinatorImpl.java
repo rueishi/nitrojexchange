@@ -15,6 +15,8 @@ import ig.rueishi.nitroj.exchange.messages.RecoveryCompleteEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.VenueStatus;
 import ig.rueishi.nitroj.exchange.messages.VenueStatusEventDecoder;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
 import ig.rueishi.nitroj.exchange.order.OrderManager;
 import ig.rueishi.nitroj.exchange.order.OrderState;
 import io.aeron.ExclusivePublication;
@@ -36,6 +38,17 @@ import org.agrona.concurrent.UnsafeBuffer;
  * the lock with a RecoveryCompleteEvent. The implementation is single-threaded
  * with the rest of cluster business logic, so state changes are plain array
  * writes rather than synchronized operations.</p>
+ *
+ * <p>V13 parent-order recovery is integrated as an optional sibling state owner.
+ * Parent snapshots are copied through {@link ParentOrderRegistry.Snapshot}: the
+ * snapshot contains active parent slots, parent fill totals, terminal reasons,
+ * timer correlation IDs, active child links, and registry counters. During
+ * reconciliation, order-manager child state is loaded first, then parent
+ * registry state, and only then are venue order-status reports applied. A child
+ * with a parent ID but no recoverable parent is treated as unreconciled risk and
+ * activates the kill switch with {@code parent_reconciliation_failed}. A missing
+ * parent/child registry link is counted and repaired deterministically when the
+ * parent itself exists.</p>
  */
 public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
     public enum RecoveryState {
@@ -54,6 +67,7 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
     private final RiskEngine riskEngine;
     private final OrderManager orderManager;
     private final PortfolioEngine portfolioEngine;
+    private final ParentOrderRegistry parentOrderRegistry;
     private final RecoverySink sink;
     private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
     private final OrderStatusQueryCommandEncoder orderStatusQueryEncoder = new OrderStatusQueryCommandEncoder();
@@ -66,13 +80,29 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
     private Cluster cluster;
     private long lastScheduledTimerId;
     private long lastCanceledTimerId;
+    private long parentSnapshotWrites;
+    private long parentSnapshotLoads;
+    private long parentReconciliationMismatches;
+    private long parentSyntheticFills;
+    private long parentPartialRecoveries;
+    private long parentHedgePendingRecoveries;
+    private long unreconciledParentKillSwitches;
 
     public RecoveryCoordinatorImpl(
         final OrderManager orderManager,
         final PortfolioEngine portfolioEngine,
         final RiskEngine riskEngine
     ) {
-        this(orderManager, portfolioEngine, riskEngine, RecoverySink.NO_OP);
+        this(orderManager, portfolioEngine, riskEngine, null, RecoverySink.NO_OP);
+    }
+
+    public RecoveryCoordinatorImpl(
+        final OrderManager orderManager,
+        final PortfolioEngine portfolioEngine,
+        final RiskEngine riskEngine,
+        final ParentOrderRegistry parentOrderRegistry
+    ) {
+        this(orderManager, portfolioEngine, riskEngine, parentOrderRegistry, RecoverySink.NO_OP);
     }
 
     RecoveryCoordinatorImpl(
@@ -81,9 +111,20 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
         final RiskEngine riskEngine,
         final RecoverySink sink
     ) {
+        this(orderManager, portfolioEngine, riskEngine, null, sink);
+    }
+
+    RecoveryCoordinatorImpl(
+        final OrderManager orderManager,
+        final PortfolioEngine portfolioEngine,
+        final RiskEngine riskEngine,
+        final ParentOrderRegistry parentOrderRegistry,
+        final RecoverySink sink
+    ) {
         this.orderManager = Objects.requireNonNull(orderManager, "orderManager");
         this.portfolioEngine = Objects.requireNonNull(portfolioEngine, "portfolioEngine");
         this.riskEngine = Objects.requireNonNull(riskEngine, "riskEngine");
+        this.parentOrderRegistry = parentOrderRegistry;
         this.sink = Objects.requireNonNull(sink, "sink");
         Arrays.fill(venueState, RecoveryState.IDLE);
     }
@@ -128,10 +169,13 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
             }
             return;
         }
+        if (!reconcileParentOrder(decoder, internal)) {
+            return;
+        }
 
         if (decoder.execType() == ExecType.CANCELED) {
             orderManager.forceTransitionToCanceled(decoder.clOrdId());
-        } else if (decoder.execType() == ExecType.FILL) {
+        } else if (isFill(decoder.execType())) {
             publishSyntheticFill(decoder, internal);
             portfolioEngine.onFill(decoder);
         }
@@ -197,6 +241,13 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
         Arrays.fill(venueState, RecoveryState.IDLE);
         lastScheduledTimerId = 0L;
         lastCanceledTimerId = 0L;
+        parentSnapshotWrites = 0L;
+        parentSnapshotLoads = 0L;
+        parentReconciliationMismatches = 0L;
+        parentSyntheticFills = 0L;
+        parentPartialRecoveries = 0L;
+        parentHedgePendingRecoveries = 0L;
+        unreconciledParentKillSwitches = 0L;
     }
 
     @Override
@@ -216,6 +267,54 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
         return lastCanceledTimerId;
     }
 
+    public ParentOrderRegistry.Snapshot newParentSnapshot() {
+        return parentOrderRegistry == null ? null : parentOrderRegistry.newSnapshot();
+    }
+
+    public void snapshotParentOrders(final ParentOrderRegistry.Snapshot snapshot) {
+        if (parentOrderRegistry == null || snapshot == null) {
+            return;
+        }
+        parentOrderRegistry.snapshotInto(snapshot);
+        parentSnapshotWrites++;
+    }
+
+    public void loadParentSnapshot(final ParentOrderRegistry.Snapshot snapshot) {
+        if (parentOrderRegistry == null || snapshot == null) {
+            return;
+        }
+        parentOrderRegistry.loadFrom(snapshot);
+        parentSnapshotLoads++;
+    }
+
+    public long parentSnapshotWrites() {
+        return parentSnapshotWrites;
+    }
+
+    public long parentSnapshotLoads() {
+        return parentSnapshotLoads;
+    }
+
+    public long parentReconciliationMismatches() {
+        return parentReconciliationMismatches;
+    }
+
+    public long parentSyntheticFills() {
+        return parentSyntheticFills;
+    }
+
+    public long parentPartialRecoveries() {
+        return parentPartialRecoveries;
+    }
+
+    public long parentHedgePendingRecoveries() {
+        return parentHedgePendingRecoveries;
+    }
+
+    public long unreconciledParentKillSwitches() {
+        return unreconciledParentKillSwitches;
+    }
+
     int encodeSnapshot(final UnsafeBuffer target, final int offset) {
         target.putByte(offset, (byte) venueState.length);
         for (int i = 0; i < venueState.length; i++) {
@@ -229,6 +328,52 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
         for (int i = 0; i < count && i < venueState.length; i++) {
             venueState[i] = RecoveryState.values()[source.getByte(offset + 1 + i)];
         }
+    }
+
+    private boolean reconcileParentOrder(final ExecutionEventDecoder decoder, final OrderState childOrder) {
+        if (parentOrderRegistry == null || childOrder.parentOrderId() == 0L) {
+            return true;
+        }
+
+        final long parentOrderId = childOrder.parentOrderId();
+        final ParentOrderState parent = parentOrderRegistry.lookup(parentOrderId);
+        if (parent == null) {
+            parentReconciliationMismatches++;
+            unreconciledParentKillSwitches++;
+            riskEngine.activateKillSwitch("parent_reconciliation_failed");
+            return false;
+        }
+
+        if (parentOrderRegistry.parentOrderIdByChild(decoder.clOrdId()) == 0L) {
+            parentReconciliationMismatches++;
+            parentOrderRegistry.linkChild(parentOrderId, decoder.clOrdId());
+        }
+
+        if (decoder.execType() == ExecType.CANCELED) {
+            parentOrderRegistry.unlinkChild(decoder.clOrdId());
+            if (parentOrderRegistry.activeChildCount(parentOrderId) == 0) {
+                parentOrderRegistry.transition(parentOrderId, ParentOrderState.CANCELED,
+                    ParentOrderState.REASON_EXECUTION_ABORTED, decoder.ingressTimestampNanos());
+            }
+        } else if (isFill(decoder.execType())) {
+            parentSyntheticFills++;
+            parentOrderRegistry.updateFill(parentOrderId, decoder.cumQtyScaled(), decoder.leavesQtyScaled(),
+                decoder.fillPriceScaled());
+            if (parent.status() == ParentOrderState.HEDGING) {
+                parentHedgePendingRecoveries++;
+            }
+            if (decoder.execType() == ExecType.PARTIAL_FILL || decoder.leavesQtyScaled() > 0L
+                || decoder.isFinal() != BooleanType.TRUE) {
+                parentPartialRecoveries++;
+                parentOrderRegistry.transition(parentOrderId, ParentOrderState.PARTIALLY_FILLED,
+                    ParentOrderState.REASON_NONE, decoder.ingressTimestampNanos());
+            } else {
+                parentOrderRegistry.unlinkChild(decoder.clOrdId());
+                parentOrderRegistry.transition(parentOrderId, ParentOrderState.DONE,
+                    ParentOrderState.REASON_COMPLETED, decoder.ingressTimestampNanos());
+            }
+        }
+        return true;
     }
 
     private void startOrderQuery(final int venueId) {
@@ -336,6 +481,10 @@ public final class RecoveryCoordinatorImpl implements RecoveryCoordinator {
 
     private static byte[] bytes(final String value) {
         return value == null ? new byte[0] : value.getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private static boolean isFill(final ExecType execType) {
+        return execType == ExecType.FILL || execType == ExecType.PARTIAL_FILL;
     }
 
     @FunctionalInterface
