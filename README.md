@@ -839,3 +839,212 @@ Before production:
   exist before live trading.
 - Do not use real Coinbase QA/UAT to replace missing local evidence. QA/UAT is
   the final external venue validation step after local proof is complete.
+
+## Future Strategy Catalog TODO
+
+This section is a roadmap catalog for future development, not a statement of
+current support. V13 currently implements two trading strategies and three
+execution strategies:
+
+Current V13 trading strategies:
+
+- `MarketMakingStrategy`: single-instrument market making.
+- `ArbStrategy`: cross-venue two-leg arbitrage.
+
+Current V13 execution strategies:
+
+- `ImmediateLimitExecution`: one limit child order.
+- `PostOnlyQuoteExecution`: post-only quote lifecycle with bounded retry.
+- `MultiLegContingentExecution`: two-leg IOC execution with leg timeout,
+  imbalance hedge, and kill-switch escalation on hedge failure.
+
+All other items below are TODO candidates for V14+ or later releases. They must
+not be treated as implemented until a future spec, implementation plan, task
+cards, tests, benchmarks, deterministic replay evidence, simulator evidence, and
+preflight gates explicitly cover them. Any reference to time or scheduling below
+must be implemented with NitroJEx deterministic cluster time, not uncontrolled
+wall-clock callbacks.
+
+Current asset-class scope is cryptocurrency spot trading. Future development may
+add other spot asset classes such as FX, equity stocks, and index funds, but
+those require separate venue adapters, market-data normalizers, order semantics,
+calendar/session handling, regulatory controls, QA/UAT evidence, and preflight
+gates before any support claim is made.
+
+### Future Trading Strategies
+
+Liquidity-providing strategies:
+
+- Single-instrument market making: implemented in V13 as `MarketMakingStrategy`.
+- Multi-instrument market making: one strategy class parameterized over a list
+  of instruments, with correlated inventory management.
+- Multi-venue market making: quote the same instrument across venues with
+  cross-venue inventory netting and per-venue spread/skew calibration.
+- Adaptive-spread market making: spread responds to realized volatility, fill
+  rate, and adverse-selection signals.
+- Quote-stuffing-aware market making: detect venue-side message storms and widen
+  or withdraw quotes.
+- Inventory-rebalancing market making: quote asymmetrically or cross the spread
+  when inventory exceeds soft thresholds.
+- Single-venue passive arbitrage / queue jockey: join the touch using L3
+  queue-position estimation.
+- Auction market making: participate in opening, closing, and intraday auctions.
+- RFQ-responder market making: answer quote requests with skewed quotes and
+  decline-to-quote rules.
+- Options market making: quote calls/puts across a volatility surface with
+  continuous delta hedging.
+- Tiered quoting: combine wide-and-large passive quotes with tight-and-small
+  topping quotes.
+
+Liquidity-taking arbitrage strategies:
+
+- Cross-venue arbitrage (two-leg): implemented in V13 as `ArbStrategy`.
+- Triangular arbitrage: three-leg same-venue arbitrage across related pairs.
+- Statistical arbitrage / pairs trading: trade cointegrated pairs on z-score
+  divergence and mean reversion.
+- Mean-reversion stat-arb basket: trade residuals of a multi-instrument factor
+  model.
+- Index arbitrage: trade an index product against its constituent basket.
+- ETF arbitrage: creation/redemption style ETF versus basket arbitrage.
+- Funding-rate arbitrage: pair spot and perpetual swap exposure to capture
+  funding.
+- Basis arbitrage: trade futures versus spot convergence.
+- Cash-and-carry arbitrage: long spot and short forward/future to lock basis.
+- Calendar-spread arbitrage: trade front-month versus back-month futures spread.
+- Latency arbitrage: take stale quotes on slower venues after faster venues move.
+- CEX-DEX arbitrage: trade centralized versus decentralized exchange price
+  differences.
+- Volatility arbitrage: delta-hedged options positions versus realized
+  volatility.
+- Dispersion trading: index volatility versus constituent volatility.
+
+Signal-driven directional strategies:
+
+- Microstructure mean reversion: short-horizon reversion after unusual moves.
+- Order-flow imbalance trading: trade with aggressive flow imbalance.
+- Trend-following / momentum: enter breakouts with trailing-stop exits.
+- Cross-sectional momentum: long winners and short losers across a universe.
+- Pairs momentum: apply momentum to a spread between related instruments.
+- Mean-reversion swing: longer-horizon reversion against extended moves.
+- News-driven trading: map news events to instruments and directional intents.
+- Sentiment-driven trading: use social/forum sentiment as directional input.
+- Liquidity-seeking directional: bias execution when unusual depth appears.
+- Block-detection trading: trade behind inferred institutional block flow.
+- Iceberg-detection trading: infer hidden refresh behavior and trade around it.
+
+Risk-management and meta-strategies:
+
+- Auto-hedger: hedge aggregate firm exposure without generating alpha.
+- Inventory liquidator: flatten open positions before a configured cutoff.
+- Stop-out monitor: trigger kill switch on drawdown limits.
+- Portfolio rebalancer: move portfolio toward target weights.
+- Delta hedger: continuously hedge options-book delta.
+- Gamma scalper: trade realized volatility around an options position.
+- Currency-exposure hedger: net FX pairs into currency-level exposure and hedge.
+
+Execution-quality strategies, alpha-less:
+
+- One-shot intent submitter: emit one parent intent for a selected execution
+  strategy.
+- Schedule-based intent submitter: emit parent intents on deterministic cluster
+  schedule.
+- Implementation-shortfall trader: manage urgency versus arrival-price
+  benchmark at the trading-intent layer.
+- Smart liquidity-seeking trader: adjust urgency hints from observed liquidity
+  and fill quality.
+- Slippage-budget trader: work a parent order against a benchmark budget.
+
+Specialty strategies:
+
+- A/B research overlay: run research behavior at small size beside production.
+- Time-of-day specialist: activate behavior for a regional session.
+- Risk-segregated strategy: run against a separate capital pool and drawdown
+  limits.
+- Funding-event trader: trade around scheduled funding, expiry, rollover, or
+  economic events.
+- Cross-asset relative value: trade relationships across asset classes.
+
+### Future Execution Strategies
+
+Single-child-order executions:
+
+- `ImmediateLimitExecution`: implemented in V13.
+- `ImmediateMarketExecution`: submit one market child order.
+- `ImmediateIOCExecution`: submit one immediate-or-cancel child order.
+- `ImmediateFOKExecution`: submit one fill-or-kill child order.
+- `StopMarketExecution`: trigger a market child when price is breached.
+- `StopLimitExecution`: trigger a limit child when price is breached.
+- `TrailingStopExecution`: stop trigger tracks favorable market moves.
+- `MarketWithProtectionExecution`: market child with price collar.
+- `GTDLimitExecution`: limit child with deterministic expiry.
+
+Working-quote executions:
+
+- `PostOnlyQuoteExecution`: implemented in V13.
+- `CrossingQuoteExecution`: refresh quotes that may cross the spread.
+- `PeggedQuoteExecution`: peg child price to a reference with offset.
+- `DiscretionaryQuoteExecution`: hidden discretionary range around stated price.
+- `JoinQueueExecution`: join the existing queue at the touch.
+- `HiddenQuoteExecution`: fully hidden venue-supported orders.
+- `ReserveQuoteExecution`: venue-side iceberg / reserve orders.
+
+Multi-leg and contingent executions:
+
+- `MultiLegContingentExecution`: implemented in V13.
+- `MultiLegContingentExecutionN`: N-leg generalization for triangular and more
+  complex trades.
+- `BracketExecution`: entry plus take-profit and stop-loss OCO children.
+- `OCOExecution`: generic one-cancels-other pair.
+- `LeggingInExecution`: configurable leg sequence for multi-leg trades.
+
+Algorithmic time-based executions:
+
+- `TwapExecution`: equal slices over a deterministic time window.
+- `VwapExecution`: slices following expected volume profile.
+- `PovExecution`: participate at target percentage of observed volume.
+- `AdaptivePovExecution`: POV target adapts to spread, volatility, and fill
+  quality.
+- `ImplementationShortfallExecution`: optimize impact versus opportunity cost.
+- `ArrivalPriceExecution`: benchmark against parent arrival mid.
+- `ScheduledExecution`: deterministic-clock anchored single submission.
+
+Hidden-liquidity executions:
+
+- `IcebergVenueExecution`: venue-side iceberg using max-floor fields.
+- `IcebergSyntheticExecution`: client-side visible slices.
+- `IcebergRandomizedExecution`: randomized synthetic slices and prices.
+- `DarkPoolFirstExecution`: dark venues first, lit venues as fallback.
+
+Smart-routing executions:
+
+- `SmartOrderRoutingExecution`: split across venues by price, fees, and fill
+  probability.
+- `IsoSweepExecution`: equities-specific intermarket sweep order.
+- `SequentialVenueExecution`: try venues in priority order.
+- `LiquiditySeekingExecution`: adapt venue weights from depth and fill quality.
+- `ParallelVenueExecution`: submit to multiple venues simultaneously.
+
+RFQ and quote-driven executions:
+
+- `RFQAcceptExecution`: request quotes and accept best response.
+- `LastLookAwareExecution`: bias IOC venue selection by last-look reject risk.
+- `StreamHitterExecution`: hit streaming bank quotes.
+- `MultiBankSweepExecution`: distribute parent size across bank streams.
+
+Auction and event executions:
+
+- `AuctionParticipationExecution`: opening/closing auction order types.
+- `ClosingAuctionExecution`: closing-auction execution with imbalance awareness.
+- `EventDrivenExecution`: trigger from news, economic, or on-chain events.
+- `FundingEventExecution`: time entries/exits around funding windows.
+
+Specialty executions:
+
+- `SyntheticOrderExecution`: synthesize unsupported order types from primitives.
+- `CancelOnDisconnectExecution`: cancel children when venue session drops.
+- `TimeWindowExecution`: active only inside configured deterministic time window.
+- `FillAndKillExecution`: wait briefly, then cancel residual.
+- `MinQtyExecution`: submit with minimum-quantity constraint.
+- `ReduceOnlyExecution`: derivatives reduce-only constraint.
+- `CloseOnlyExecution`: close existing positions only.
+- `PostTradeAllocationExecution`: allocate fills across sub-accounts after trade.
