@@ -93,6 +93,14 @@ fill aggregation, terminal reasons, snapshot/load, and parent recovery evidence.
 
 V13 explicitly does not add TWAP, VWAP, POV, pegged order algorithms, smart order routing, new venue plugins, new FIX protocol plugins, or RiskEngine semantic changes.
 
+## Architecture Diagram
+
+The current V13 architecture targets cryptocurrency spot trading. Future asset
+classes, venues, trading strategies, and execution strategies should extend the
+same boundaries rather than bypassing them.
+
+![NitroJEx V13 Architecture](docs/images/nitrojex-v13-architecture.png)
+
 ## Major Capabilities
 
 - Multi-module Gradle build targeting Java 21.
@@ -229,6 +237,20 @@ Owns local tooling:
 - FIX replay tool
 - warmup harness implementation
 - shared trading system test harness
+
+The admin CLI/client is a cold/control-plane support surface, including PROD
+support workflows when enabled by deployment policy. It must communicate through
+signed `AdminCommand` messages routed by `MessageRouter` into
+`AdminCommandHandler`; it must not mutate cluster state directly. Its approved
+responsibilities are:
+
+- inspect state through supported admin, replay, diagnostic, or evidence views
+- trigger approved admin commands such as activate/deactivate kill switch,
+  pause/resume strategy, trigger snapshot, and reset daily counters
+- replay scenarios through the FIX replay and simulator tooling
+- run diagnostics and warmup/test harness workflows
+- support operations without bypassing `RiskEngine`, `OrderManager`, cluster
+  ordering, authorization, nonce validation, HMAC validation, or auditability
 
 ## Requirements
 
