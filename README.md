@@ -1,4 +1,4 @@
-# NitroJExchange — High-Frequency Liquidity and Arbitrage Infrastructure
+# NitroJ Exchange — High-Frequency Liquidity and Arbitrage Infrastructure
 ## A Multi-Venue, Multi-Strategy Pluggable Prop-Stack
 
 **NitroJ Exchange** is a Java 21 low-latency trading platform, modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
