@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.153">
+  <properties/>
+  <testcase name="replay_sameFillSequenceMatchesParentState()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.023"/>
+  <testcase name="hedgeRiskReject_activatesKillSwitchAndFailsParent()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.017"/>
+  <testcase name="counters_capacityRejectRecorded()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.01"/>
+  <testcase name="oneLegRejected_failsParentWithCooldownReason()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.014"/>
+  <testcase name="oneLegFillImbalanceTimer_submitsHedge()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.009"/>
+  <testcase name="parentCancel_cancelsBothLegs()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.013"/>
+  <testcase name="legTimer_cancelsPendingLegs()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.01"/>
+  <testcase name="hedgeVenueReject_activatesKillSwitchAndFailsParent()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.013"/>
+  <testcase name="snapshotLoad_restoresParentAndLegLinks()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.013"/>
+  <testcase name="childFillDuringCancel_isCountedAndCanComplete()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.013"/>
+  <testcase name="bothLegsFilled_completesParent()" classname="ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecutionTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:14:43" hostname="LAPTOP-PGTQL50G" time="0.482">
+  <properties/>
+  <testcase name="negative_changedEventOrderProducesDifferentResult()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.193"/>
+  <testcase name="exception_malformedReplayFixtureFailsClearly()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.028"/>
+  <testcase name="v13ParentReplay_sameOrderedStreamProducesIdenticalParentStatesAndCommands()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.074"/>
+  <testcase name="failure_rejectedRiskAndStaleMarketDataProduceDeterministicCommands()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.035"/>
+  <testcase name="edge_emptySingleDuplicateAndMaxIdsReplayDeterministically()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.104"/>
+  <testcase name="positive_sameOrderedReplayProducesIdenticalStateAndCommands()" classname="ig.rueishi.nitroj.exchange.cluster.DeterministicReplayTest" time="0.041"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.029">
+  <properties/>
+  <testcase name="snapshot_corruptedBuffer_loadsDefaultState()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.002"/>
+  <testcase name="snapshot_emptyPositions_loadProducesZeroNetQty()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.001"/>
+  <testcase name="fullState_writeAndLoad_allComponentsConsistent()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.013"/>
+  <testcase name="snapshot_writeAndLoad_recoveryState()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.002"/>
+  <testcase name="snapshot_roundTrip_killSwitchStatePreserved()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.001"/>
+  <testcase name="snapshot_writeAndLoad_riskState()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.0"/>
+  <testcase name="snapshot_writeAndLoad_orderManagerState()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.002"/>
+  <testcase name="snapshot_writeAndLoad_portfolioState()" classname="ig.rueishi.nitroj.exchange.cluster.SnapshotRoundTripIntegrationTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

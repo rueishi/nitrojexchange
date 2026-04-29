@@ -28,6 +28,22 @@ public interface OrderManager {
         int strategyId
     );
 
+    default void createPendingOrder(
+        long clOrdId,
+        int venueId,
+        int instrumentId,
+        byte side,
+        byte ordType,
+        byte timeInForce,
+        long priceScaled,
+        long qtyScaled,
+        int strategyId,
+        long parentOrderId
+    ) {
+        createPendingOrder(clOrdId, venueId, instrumentId, side, ordType, timeInForce,
+            priceScaled, qtyScaled, strategyId);
+    }
+
     boolean onExecution(ExecutionEventDecoder decoder);
 
     void cancelAllOrders();
@@ -37,6 +53,9 @@ public interface OrderManager {
     OrderState getOrder(long clOrdId);
 
     void forceTransitionToCanceled(long clOrdId);
+
+    default void markCancelSent(long clOrdId) {
+    }
 
     void writeSnapshot(ExclusivePublication pub);
 

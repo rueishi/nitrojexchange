@@ -4,6 +4,7 @@ import ig.rueishi.nitroj.exchange.cluster.InternalMarketView;
 import ig.rueishi.nitroj.exchange.cluster.PortfolioEngine;
 import ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
 import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
@@ -30,6 +31,8 @@ import org.agrona.concurrent.status.CountersManager;
  * @param orderManager live order lifecycle owner
  * @param portfolioEngine position and PnL owner
  * @param recoveryCoordinator venue recovery state owner
+ * @param executionEngine optional V13 execution-strategy engine; may be null
+ * during staged migration before TASK-305 wiring is installed
  * @param cluster Aeron Cluster facade, initially {@code null} before service
  * start
  * @param egressBuffer reusable strategy command buffer
@@ -45,6 +48,7 @@ public record StrategyContextImpl(
     OrderManager orderManager,
     PortfolioEngine portfolioEngine,
     RecoveryCoordinator recoveryCoordinator,
+    ExecutionStrategyEngine executionEngine,
     Cluster cluster,
     UnsafeBuffer egressBuffer,
     MessageHeaderEncoder headerEncoder,
@@ -53,4 +57,32 @@ public record StrategyContextImpl(
     IdRegistry idRegistry,
     CountersManager counters
 ) implements StrategyContext {
+    public StrategyContextImpl(
+        final InternalMarketView marketView,
+        final RiskEngine riskEngine,
+        final OrderManager orderManager,
+        final PortfolioEngine portfolioEngine,
+        final RecoveryCoordinator recoveryCoordinator,
+        final Cluster cluster,
+        final UnsafeBuffer egressBuffer,
+        final MessageHeaderEncoder headerEncoder,
+        final NewOrderCommandEncoder newOrderEncoder,
+        final CancelOrderCommandEncoder cancelOrderEncoder,
+        final IdRegistry idRegistry,
+        final CountersManager counters) {
+        this(
+            marketView,
+            riskEngine,
+            orderManager,
+            portfolioEngine,
+            recoveryCoordinator,
+            null,
+            cluster,
+            egressBuffer,
+            headerEncoder,
+            newOrderEncoder,
+            cancelOrderEncoder,
+            idRegistry,
+            counters);
+    }
 }

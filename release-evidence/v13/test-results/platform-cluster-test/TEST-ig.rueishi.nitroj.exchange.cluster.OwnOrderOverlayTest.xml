@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.14">
+  <properties/>
+  <testcase name="remove_terminalOrZeroQty_removesOwnLiquidity()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.013"/>
+  <testcase name="venueOrderIdCollision_exactByteComparisonKeepsOrdersDistinct()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.003"/>
+  <testcase name="capacityExceeded_ignoresNewOrderAndPreservesExistingState()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.001"/>
+  <testcase name="exactMatch_mismatchedIdentity_returnsZero()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.008"/>
+  <testcase name="upsert_multipleOrdersSameLevel_aggregatesAndUpdates()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.012"/>
+  <testcase name="capacityFull_existingOrderCanStillUpdateAndRemove()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.001"/>
+  <testcase name="staleOrderCleanup_removesOldVenueOrderIdWhenOrderRekeys()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.008"/>
+  <testcase name="remove_unknownOrder_isIgnored()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.013"/>
+  <testcase name="invalidCapacity_throwsClearly()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.004"/>
+  <testcase name="upsert_oneOwnOrder_tracksLevelAndVenueOrderId()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.011"/>
+  <testcase name="exactMatch_sameVenueOrderIdOnDifferentVenues_doesNotOverwrite()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.014"/>
+  <testcase name="selfCrossChecks_detectOppositeSideCrosses()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.018"/>
+  <testcase name="upsert_invalidIdentityOrValues_throws()" classname="ig.rueishi.nitroj.exchange.cluster.OwnOrderOverlayTest" time="0.017"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

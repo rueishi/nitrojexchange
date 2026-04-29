@@ -2,10 +2,38 @@ package ig.rueishi.nitroj.exchange.strategy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ig.rueishi.nitroj.exchange.execution.ChildExecutionView;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategy;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContext;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderIntentView;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
+import ig.rueishi.nitroj.exchange.messages.BooleanType;
+import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
+import ig.rueishi.nitroj.exchange.messages.ExecType;
+import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.ExecutionEventEncoder;
+import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.MarketDataEventEncoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
+import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
+import ig.rueishi.nitroj.exchange.messages.Side;
+import ig.rueishi.nitroj.exchange.cluster.RiskDecision;
+import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
+import ig.rueishi.nitroj.exchange.messages.EntryType;
+import ig.rueishi.nitroj.exchange.messages.UpdateAction;
+import ig.rueishi.nitroj.exchange.order.OrderManager;
+import ig.rueishi.nitroj.exchange.order.OrderState;
+import ig.rueishi.nitroj.exchange.registry.IdRegistry;
 import io.aeron.cluster.service.Cluster;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.concurrent.status.CountersManager;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -130,6 +158,40 @@ final class StrategyEngineTest {
     }
 
     @Test
+    void onExecution_inactive_routesParentExecutionBeforeTradingGate() {
+        final ExecutionHarness harness = executionHarness();
+        harness.parentRegistry.claim(9_001L, 7, 2, 100L, 1L);
+
+        harness.engine.onExecution(execution(55L), true, 9_001L);
+
+        assertThat(harness.executionStrategy.events).containsExactly("child:55:9001");
+        assertThat(harness.tradingStrategy.fillCount).isZero();
+    }
+
+    @Test
+    void onMarketData_active_routesToExecutionBeforeTradingStrategies() {
+        final ExecutionHarness harness = executionHarness();
+        harness.engine.setActive(true);
+
+        harness.engine.onMarketData(marketData(), 123L);
+
+        assertThat(harness.executionStrategy.events).containsExactly("market:1:11:123");
+        assertThat(harness.tradingStrategy.marketDataCount).isEqualTo(1);
+    }
+
+    @Test
+    void onTimer_routesOnlyRegisteredExecutionTimerOwner() {
+        final ExecutionHarness harness = executionHarness();
+        assertThat(harness.executionEngine.registerTimerOwner(77L, 2)).isTrue();
+
+        harness.engine.onTimer(77L);
+        harness.engine.onTimer(88L);
+
+        assertThat(harness.executionStrategy.events).containsExactly("timer:77");
+        assertThat(harness.executionEngine.unknownTimerRejects()).isZero();
+    }
+
+    @Test
     void setCluster_reinitializesStrategiesWithClusterAwareContext() {
         final Harness harness = harness();
         final Cluster cluster = cluster();
@@ -150,13 +212,45 @@ final class StrategyEngineTest {
         return new Harness(engine, first, second);
     }
 
+    private static ExecutionHarness executionHarness() {
+        final ParentOrderRegistry parentRegistry = new ParentOrderRegistry(8, 8);
+        final ExecutionStrategyRegistry registry = new ExecutionStrategyRegistry(4, 8);
+        final RecordingExecutionStrategy executionStrategy = new RecordingExecutionStrategy(2);
+        registry.register(executionStrategy);
+        registry.allowCompatibility(7, 2);
+        final ExecutionStrategyContext executionContext = new ExecutionStrategyContext(
+            new ig.rueishi.nitroj.exchange.cluster.InternalMarketView(),
+            new RiskStub(),
+            new OrderManagerStub(),
+            parentRegistry,
+            new UnsafeBuffer(new byte[512]),
+            new MessageHeaderEncoder(),
+            new NewOrderCommandEncoder(),
+            new CancelOrderCommandEncoder(),
+            () -> 1L,
+            (correlationId, deadlineClusterMicros) -> true,
+            new IdRegistryStub(),
+            counters());
+        final ExecutionStrategyEngine executionEngine = new ExecutionStrategyEngine(registry, executionContext);
+        executionEngine.initRegisteredStrategies();
+        final StrategyEngine engine = new StrategyEngine(context(null, executionEngine));
+        final RecordingStrategy tradingStrategy = new RecordingStrategy(7);
+        engine.register(tradingStrategy);
+        return new ExecutionHarness(engine, executionEngine, parentRegistry, executionStrategy, tradingStrategy);
+    }
+
     static StrategyContext context(final Cluster cluster) {
+        return context(cluster, null);
+    }
+
+    static StrategyContext context(final Cluster cluster, final ExecutionStrategyEngine executionEngine) {
         return new StrategyContextImpl(
             new ig.rueishi.nitroj.exchange.cluster.InternalMarketView(),
             null,
             null,
             null,
             null,
+            executionEngine,
             cluster,
             new org.agrona.concurrent.UnsafeBuffer(new byte[512]),
             new ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder(),
@@ -180,7 +274,63 @@ final class StrategyEngineTest {
         );
     }
 
+    private static MarketDataEventDecoder marketData() {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[128]);
+        new MarketDataEventEncoder()
+            .wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .venueId(1)
+            .instrumentId(11)
+            .entryType(EntryType.BID)
+            .updateAction(UpdateAction.NEW)
+            .priceScaled(65_000L)
+            .sizeScaled(1_000L)
+            .priceLevel(0)
+            .ingressTimestampNanos(1L)
+            .exchangeTimestampNanos(2L)
+            .fixSeqNum(1);
+        final MarketDataEventDecoder decoder = new MarketDataEventDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderDecoder());
+        return decoder;
+    }
+
+    private static ExecutionEventDecoder execution(final long childClOrdId) {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[256]);
+        new ExecutionEventEncoder()
+            .wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .clOrdId(childClOrdId)
+            .venueId(1)
+            .instrumentId(11)
+            .execType(ExecType.FILL)
+            .side(Side.BUY)
+            .fillPriceScaled(65_000L)
+            .fillQtyScaled(100L)
+            .cumQtyScaled(100L)
+            .leavesQtyScaled(0L)
+            .rejectCode(0)
+            .ingressTimestampNanos(1L)
+            .exchangeTimestampNanos(2L)
+            .fixSeqNum(1)
+            .isFinal(BooleanType.TRUE)
+            .putVenueOrderId(new byte[0], 0, 0)
+            .putExecId(new byte[0], 0, 0);
+        final ExecutionEventDecoder decoder = new ExecutionEventDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderDecoder());
+        return decoder;
+    }
+
+    private static CountersManager counters() {
+        return new CountersManager(new UnsafeBuffer(new byte[1024 * 1024]), new UnsafeBuffer(new byte[64 * 1024]));
+    }
+
     private record Harness(StrategyEngine engine, RecordingStrategy first, RecordingStrategy second) {
+    }
+
+    private record ExecutionHarness(
+        StrategyEngine engine,
+        ExecutionStrategyEngine executionEngine,
+        ParentOrderRegistry parentRegistry,
+        RecordingExecutionStrategy executionStrategy,
+        RecordingStrategy tradingStrategy) {
     }
 
     static final class RecordingStrategy implements Strategy {
@@ -209,5 +359,60 @@ final class StrategyEngineTest {
         @Override public void shutdown() { }
         @Override public int strategyId() { return id; }
         @Override public void onTimer(final long correlationId) { timerIds.add(correlationId); }
+    }
+
+    private static final class RecordingExecutionStrategy implements ExecutionStrategy {
+        private final int id;
+        private final List<String> events = new ArrayList<>();
+
+        private RecordingExecutionStrategy(final int id) {
+            this.id = id;
+        }
+
+        @Override public int executionStrategyId() { return id; }
+        @Override public void init(final ExecutionStrategyContext ctx) { }
+        @Override public void onParentIntent(final ParentOrderIntentView intent) { }
+        @Override public void onMarketDataTick(final int venueId, final int instrumentId, final long clusterTimeMicros) { events.add("market:" + venueId + ":" + instrumentId + ":" + clusterTimeMicros); }
+        @Override public void onChildExecution(final ChildExecutionView execution) { events.add("child:" + execution.childClOrdId() + ":" + execution.parentOrderId()); }
+        @Override public void onTimer(final long correlationId) { events.add("timer:" + correlationId); }
+        @Override public void onCancel(final long parentOrderId, final byte reasonCode) { }
+    }
+
+    private static final class RiskStub implements RiskEngine {
+        @Override public RiskDecision preTradeCheck(final int venueId, final int instrumentId, final byte side, final long priceScaled, final long qtyScaled, final int strategyId) { return RiskDecision.APPROVED; }
+        @Override public void updatePositionSnapshot(final int venueId, final int instrumentId, final long netQtyScaled) { }
+        @Override public void updateDailyPnl(final long realizedPnlDeltaScaled) { }
+        @Override public void setRecoveryLock(final int venueId, final boolean locked) { }
+        @Override public long getDailyPnlScaled() { return 0L; }
+        @Override public void activateKillSwitch(final String reason) { }
+        @Override public void deactivateKillSwitch() { }
+        @Override public boolean isKillSwitchActive() { return false; }
+        @Override public void writeSnapshot(final io.aeron.ExclusivePublication snapshotPublication) { }
+        @Override public void loadSnapshot(final io.aeron.Image snapshotImage) { }
+        @Override public void resetDailyCounters() { }
+        @Override public void setCluster(final Cluster cluster) { }
+        @Override public void onFill(final ExecutionEventDecoder decoder) { }
+        @Override public void resetAll() { }
+    }
+
+    private static final class OrderManagerStub implements OrderManager {
+        @Override public void createPendingOrder(final long clOrdId, final int venueId, final int instrumentId, final byte side, final byte ordType, final byte timeInForce, final long priceScaled, final long qtyScaled, final int strategyId) { }
+        @Override public boolean onExecution(final ExecutionEventDecoder decoder) { return true; }
+        @Override public void cancelAllOrders() { }
+        @Override public long[] getLiveOrderIds(final int venueId) { return new long[0]; }
+        @Override public OrderState getOrder(final long clOrdId) { return null; }
+        @Override public void forceTransitionToCanceled(final long clOrdId) { }
+        @Override public void writeSnapshot(final io.aeron.ExclusivePublication pub) { }
+        @Override public void loadSnapshot(final io.aeron.Image image) { }
+        @Override public void setCluster(final Cluster cluster) { }
+        @Override public void resetAll() { }
+    }
+
+    private static final class IdRegistryStub implements IdRegistry {
+        @Override public int venueId(final long sessionId) { return 1; }
+        @Override public int instrumentId(final CharSequence symbol) { return 11; }
+        @Override public String symbolOf(final int instrumentId) { return "BTC-USD"; }
+        @Override public String venueNameOf(final int venueId) { return "coinbase"; }
+        @Override public void registerSession(final int venueId, final long sessionId) { }
     }
 }

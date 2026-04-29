@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:41" hostname="LAPTOP-PGTQL50G" time="0.081">
+  <properties/>
+  <testcase name="mmStrategy_wideSpread_suppressesQuotes()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.01"/>
+  <testcase name="mmStrategy_marketMoves_requotesWithinThreshold()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.013"/>
+  <testcase name="mmStrategy_marketDataStale_quotesCancel()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.008"/>
+  <testcase name="mmStrategy_positionAtMaxLong_askSideOnly()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.013"/>
+  <testcase name="mmStrategy_killSwitchActivated_quotesCancel()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.008"/>
+  <testcase name="mmStrategy_fillReceived_inventorySkewsNextQuote()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.015"/>
+  <testcase name="mmStrategy_onMarketData_submitsTwoSidedQuotes()" classname="ig.rueishi.nitroj.exchange.strategy.MarketMakingE2ETest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

@@ -7,8 +7,16 @@ import ig.rueishi.nitroj.exchange.cluster.PortfolioEngine;
 import ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator;
 import ig.rueishi.nitroj.exchange.cluster.RiskDecision;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
+import ig.rueishi.nitroj.exchange.common.ExecutionStrategyIds;
 import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.common.MarketMakingConfig;
+import ig.rueishi.nitroj.exchange.execution.ChildExecutionView;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategy;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContext;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderIntentView;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.ExecType;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
@@ -17,6 +25,9 @@ import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.OrdType;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalEncoder;
+import ig.rueishi.nitroj.exchange.messages.ParentTerminalReason;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
@@ -224,6 +235,27 @@ final class MarketMakingStrategyTest {
     }
 
     @Test
+    void quoteIntent_noDirectChildClusterOffer() {
+        final Harness harness = harness(config());
+
+        quote(harness, 99_900L * Ids.SCALE, 100_100L * Ids.SCALE);
+
+        assertThat(harness.cluster.offerCount).isZero();
+        assertThat(harness.executionStrategy.parentIntents).isEqualTo(2);
+    }
+
+    @Test
+    void parentTerminal_clearsLiveParentId() {
+        final Harness harness = harness(config());
+        quote(harness, 99_900L * Ids.SCALE, 100_100L * Ids.SCALE);
+
+        harness.strategy.onParentTerminal(parentTerminal(harness.strategy.liveBidClOrdId()));
+
+        assertThat(harness.strategy.liveBidClOrdId()).isZero();
+        assertThat(harness.strategy.liveAskClOrdId()).isNotZero();
+    }
+
+    @Test
     void lastTradePrice_updatedFromTradeTick_andNotFromBidAsk() {
         final Harness harness = harness(config());
 
@@ -279,13 +311,36 @@ final class MarketMakingStrategyTest {
         final RecordingPortfolio portfolio = new RecordingPortfolio();
         final RecordingRecovery recovery = new RecordingRecovery();
         final RecordingCluster cluster = new RecordingCluster();
+        final ParentOrderRegistry parentRegistry = new ParentOrderRegistry(16, 16);
+        final ExecutionStrategyRegistry executionRegistry = new ExecutionStrategyRegistry(8, 8);
+        final RecordingExecutionStrategy executionStrategy = new RecordingExecutionStrategy(order, cluster);
+        executionRegistry.register(executionStrategy);
+        executionRegistry.allowCompatibility(Ids.STRATEGY_MARKET_MAKING, ExecutionStrategyIds.POST_ONLY_QUOTE);
+        final ExecutionStrategyEngine executionEngine = new ExecutionStrategyEngine(
+            executionRegistry,
+            new ExecutionStrategyContext(
+                marketView,
+                risk,
+                order,
+                parentRegistry,
+                new UnsafeBuffer(new byte[512]),
+                new MessageHeaderEncoder(),
+                new ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder(),
+                new ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder(),
+                () -> cluster.time,
+                (correlationId, deadlineClusterMicros) -> true,
+                nullIdRegistry(),
+                new org.agrona.concurrent.status.CountersManager(
+                    new UnsafeBuffer(new byte[1024 * 1024]),
+                    new UnsafeBuffer(new byte[64 * 1024]))));
+        executionEngine.initRegisteredStrategies();
         final MarketMakingStrategy strategy = new MarketMakingStrategy(config);
         strategy.init(new StrategyContextImpl(
-            marketView, risk, order, portfolio, recovery, cluster.proxy,
+            marketView, risk, order, portfolio, recovery, executionEngine, cluster.proxy,
             new UnsafeBuffer(new byte[512]), new MessageHeaderEncoder(),
             new ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder(),
             new ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder(), null, null));
-        return new Harness(strategy, marketView, risk, order, portfolio, recovery, cluster);
+        return new Harness(strategy, marketView, risk, order, portfolio, recovery, cluster, executionStrategy);
     }
 
     static void quote(final Harness harness, final long bid, final long ask) {
@@ -324,7 +379,30 @@ final class MarketMakingStrategyTest {
         return decoder;
     }
 
-    record Harness(MarketMakingStrategy strategy, InternalMarketView marketView, RecordingRisk risk, RecordingOrder order, RecordingPortfolio portfolio, RecordingRecovery recovery, RecordingCluster cluster) {
+    static ParentOrderTerminalDecoder parentTerminal(final long parentOrderId) {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[128]);
+        new ParentOrderTerminalEncoder().wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .parentOrderId(parentOrderId)
+            .strategyId((short) Ids.STRATEGY_MARKET_MAKING)
+            .executionStrategyId(ExecutionStrategyIds.POST_ONLY_QUOTE)
+            .finalCumFillQtyScaled(0L)
+            .terminalReason(ParentTerminalReason.COMPLETED);
+        final ParentOrderTerminalDecoder decoder = new ParentOrderTerminalDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder());
+        return decoder;
+    }
+
+    static ig.rueishi.nitroj.exchange.registry.IdRegistry nullIdRegistry() {
+        return new ig.rueishi.nitroj.exchange.registry.IdRegistry() {
+            @Override public int venueId(final long sessionId) { return Ids.VENUE_COINBASE; }
+            @Override public int instrumentId(final CharSequence symbol) { return Ids.INSTRUMENT_BTC_USD; }
+            @Override public String symbolOf(final int instrumentId) { return "BTC-USD"; }
+            @Override public String venueNameOf(final int venueId) { return "coinbase"; }
+            @Override public void registerSession(final int venueId, final long sessionId) { }
+        };
+    }
+
+    record Harness(MarketMakingStrategy strategy, InternalMarketView marketView, RecordingRisk risk, RecordingOrder order, RecordingPortfolio portfolio, RecordingRecovery recovery, RecordingCluster cluster, RecordingExecutionStrategy executionStrategy) {
     }
 
     static final class RecordingCluster {
@@ -357,6 +435,33 @@ final class MarketMakingStrategyTest {
         long clOrdId; Side side; long priceScaled; long qtyScaled;
         OrderRecord(final long clOrdId, final Side side, final long priceScaled, final long qtyScaled) {
             this.clOrdId = clOrdId; this.side = side; this.priceScaled = priceScaled; this.qtyScaled = qtyScaled;
+        }
+    }
+
+    static final class RecordingExecutionStrategy implements ExecutionStrategy {
+        final RecordingOrder order;
+        final RecordingCluster cluster;
+        ExecutionStrategyContext ctx;
+        long parentIntents;
+
+        RecordingExecutionStrategy(final RecordingOrder order, final RecordingCluster cluster) {
+            this.order = order;
+            this.cluster = cluster;
+        }
+
+        @Override public int executionStrategyId() { return ExecutionStrategyIds.POST_ONLY_QUOTE; }
+        @Override public void init(final ExecutionStrategyContext ctx) { this.ctx = ctx; }
+        @Override public void onParentIntent(final ParentOrderIntentView intent) {
+            parentIntents++;
+            ctx.parentOrderRegistry().claim(intent.parentOrderId(), intent.strategyId(), executionStrategyId(), intent.quantityScaled(), 1L);
+            order.orders.add(new OrderRecord(intent.parentOrderId(), intent.side(), intent.limitPriceScaled(), intent.quantityScaled()));
+            cluster.offerKinds.add("new");
+        }
+        @Override public void onMarketDataTick(final int venueId, final int instrumentId, final long clusterTimeMicros) { }
+        @Override public void onChildExecution(final ChildExecutionView execution) { }
+        @Override public void onTimer(final long correlationId) { }
+        @Override public void onCancel(final long parentOrderId, final byte reasonCode) {
+            cluster.offerKinds.add("cancel");
         }
     }
 

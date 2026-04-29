@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:37" hostname="LAPTOP-PGTQL50G" time="0.428">
+  <properties/>
+  <testcase name="validHmac_pauseStrategy_strategyPaused()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.049"/>
+  <testcase name="staleNonce_olderThan24h_rejected()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.003"/>
+  <testcase name="nonceTimestampEncoded_upperBits_validWindow()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.001"/>
+  <testcase name="emptyHmac_commandRejected()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="activateKillSwitch_alreadyActive_idempotent()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.003"/>
+  <testcase name="deactivateKillSwitch_notActive_idempotent()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.003"/>
+  <testcase name="validHmac_triggerSnapshot_snapshotCalled()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="tamperedPayload_hmacInvalid_rejected()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="nonceRingBuffer_sizeNeverExceedsCapacity()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.264"/>
+  <testcase name="validHmac_resumeStrategy_strategyResumed()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="wrongHmac_commandRejected_stateUnchanged()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.001"/>
+  <testcase name="validHmac_activateKillSwitch_killSwitchSet()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.005"/>
+  <testcase name="replayedNonce_commandRejected_warnLogged()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.001"/>
+  <testcase name="validHmac_deactivateKillSwitch_killSwitchCleared()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="validHmac_resetDailyCounters_countersCleared()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.001"/>
+  <testcase name="unknownOperatorId_commandRejected_afterHmacValidation()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.002"/>
+  <testcase name="nonceRingBuffer_afterWindowFull_oldNonceEvictedAndReaccepted()" classname="ig.rueishi.nitroj.exchange.cluster.AdminCommandHandlerTest" time="0.063"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

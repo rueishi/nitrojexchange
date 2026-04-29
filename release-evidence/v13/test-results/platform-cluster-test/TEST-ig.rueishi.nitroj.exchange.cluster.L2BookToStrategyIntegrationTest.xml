@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.L2BookToStrategyIntegrationTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.055">
+  <properties/>
+  <testcase name="marketDataEvent_updatesBook_strategySeesNewPrices()" classname="ig.rueishi.nitroj.exchange.cluster.L2BookToStrategyIntegrationTest" time="0.017"/>
+  <testcase name="bookStale_strategySuppress_noOrders()" classname="ig.rueishi.nitroj.exchange.cluster.L2BookToStrategyIntegrationTest" time="0.008"/>
+  <testcase name="marketDataThenFill_positionUpdated_skewApplied()" classname="ig.rueishi.nitroj.exchange.cluster.L2BookToStrategyIntegrationTest" time="0.017"/>
+  <testcase name="multipleInstruments_bookUpdates_onlyCorrectStrategyNotified()" classname="ig.rueishi.nitroj.exchange.cluster.L2BookToStrategyIntegrationTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

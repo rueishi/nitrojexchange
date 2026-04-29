@@ -41,6 +41,7 @@ softLimitPct        = 80
 
 [strategy.market_making]
 enabled                             = true
+executionStrategy                   = "PostOnlyQuote"
 venueId                             = 1
 instrumentId                        = 1
 targetSpreadBps                     = 10
@@ -56,6 +57,7 @@ minQuoteSizeFractionBps             = 1000
 
 [strategy.arb]
 enabled                    = false
+executionStrategy          = "MultiLegContingent"
 venueIds                   = [1, 2]
 instrumentId               = 1
 minNetProfitBps            = 5

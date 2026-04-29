@@ -4,20 +4,24 @@ import ig.rueishi.nitroj.exchange.cluster.InternalMarketView;
 import ig.rueishi.nitroj.exchange.cluster.PortfolioEngine;
 import ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
+import ig.rueishi.nitroj.exchange.common.ExecutionStrategyIds;
 import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.common.MarketMakingConfig;
 import ig.rueishi.nitroj.exchange.common.ScaledMath;
-import ig.rueishi.nitroj.exchange.messages.BooleanType;
-import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
-import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
-import ig.rueishi.nitroj.exchange.messages.OrdType;
+import ig.rueishi.nitroj.exchange.messages.ParentIntentType;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentEncoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
+import ig.rueishi.nitroj.exchange.messages.PriceMode;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
-import ig.rueishi.nitroj.exchange.order.OrderManager;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
 import io.aeron.cluster.service.Cluster;
 import java.util.Objects;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -41,21 +45,21 @@ public final class MarketMakingStrategy implements Strategy {
     private static final long WIDE_SPREAD_COOLDOWN_MICROS = 5_000_000L;
     private static final long REJECTION_COOLDOWN_MICROS = 5_000_000L;
     private static final int COMMAND_BUFFER_BYTES = 512;
-    private static final byte[] EMPTY_VENUE_ORDER_ID = new byte[0];
 
     private final MarketMakingConfig config;
     private final int[] subscribedInstrumentIds;
     private final int[] activeVenueIds;
     private InternalMarketView marketView;
     private RiskEngine riskEngine;
-    private OrderManager orderManager;
     private RecoveryCoordinator recoveryCoordinator;
     private PortfolioEngine portfolioEngine;
+    private ExecutionStrategyEngine executionEngine;
     private Cluster cluster;
     private UnsafeBuffer egressBuffer;
     private MessageHeaderEncoder headerEncoder;
-    private NewOrderCommandEncoder newOrderEncoder;
-    private CancelOrderCommandEncoder cancelOrderEncoder;
+    private final ParentOrderIntentEncoder parentIntentEncoder = new ParentOrderIntentEncoder();
+    private final ParentOrderIntentDecoder parentIntentDecoder = new ParentOrderIntentDecoder();
+    private final MessageHeaderDecoder headerDecoder = new MessageHeaderDecoder();
     private long lastQuotedMid;
     private long lastBidPrice;
     private long lastAskPrice;
@@ -81,14 +85,12 @@ public final class MarketMakingStrategy implements Strategy {
     public void init(final StrategyContext ctx) {
         marketView = ctx.marketView();
         riskEngine = ctx.riskEngine();
-        orderManager = ctx.orderManager();
         recoveryCoordinator = ctx.recoveryCoordinator();
         portfolioEngine = ctx.portfolioEngine();
+        executionEngine = ctx.executionEngine();
         cluster = ctx.cluster();
         egressBuffer = ctx.egressBuffer() == null ? new UnsafeBuffer(new byte[COMMAND_BUFFER_BYTES]) : ctx.egressBuffer();
         headerEncoder = ctx.headerEncoder() == null ? new MessageHeaderEncoder() : ctx.headerEncoder();
-        newOrderEncoder = ctx.newOrderEncoder() == null ? new NewOrderCommandEncoder() : ctx.newOrderEncoder();
-        cancelOrderEncoder = ctx.cancelOrderEncoder() == null ? new CancelOrderCommandEncoder() : ctx.cancelOrderEncoder();
     }
 
     /**
@@ -228,6 +230,16 @@ public final class MarketMakingStrategy implements Strategy {
     @Override public void shutdown() { cancelLiveQuotes(); }
     @Override public int strategyId() { return Ids.STRATEGY_MARKET_MAKING; }
 
+    @Override
+    public void onParentTerminal(final ParentOrderTerminalDecoder decoder) {
+        if (decoder.parentOrderId() == liveBidClOrdId) {
+            liveBidClOrdId = 0L;
+        }
+        if (decoder.parentOrderId() == liveAskClOrdId) {
+            liveAskClOrdId = 0L;
+        }
+    }
+
     boolean requiresRefresh(final long newBid, final long newAsk, final long newBidSize, final long newAskSize) {
         if (liveBidClOrdId == 0L || liveAskClOrdId == 0L) {
             return true;
@@ -252,48 +264,53 @@ public final class MarketMakingStrategy implements Strategy {
     }
 
     private void submitQuote(final Side side, final long price, final long size) {
-        final long clOrdId = nextQuoteClOrdId++;
-        orderManager.createPendingOrder(clOrdId, config.venueId(), config.instrumentId(), side.value(), OrdType.LIMIT.value(), TimeInForce.GTC.value(), price, size, Ids.STRATEGY_MARKET_MAKING);
-        newOrderEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
-            .clOrdId(clOrdId)
-            .venueId(config.venueId())
-            .instrumentId(config.instrumentId())
+        final long parentOrderId = nextQuoteClOrdId++;
+        parentIntentEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
+            .parentOrderId(parentOrderId)
+            .strategyId((short) Ids.STRATEGY_MARKET_MAKING)
+            .executionStrategyId(config.executionStrategy().executionStrategyId())
+            .intentType(ParentIntentType.QUOTE)
             .side(side)
-            .ordType(OrdType.LIMIT)
-            .timeInForce(TimeInForce.GTC)
-            .priceScaled(price)
-            .qtyScaled(size)
-            .strategyId((short)Ids.STRATEGY_MARKET_MAKING);
-        offer(MessageHeaderEncoder.ENCODED_LENGTH + newOrderEncoder.encodedLength());
+            .instrumentId(config.instrumentId())
+            .primaryVenueId(config.venueId())
+            .secondaryVenueId(0)
+            .quantityScaled(size)
+            .priceMode(PriceMode.LIMIT)
+            .limitPriceScaled(price)
+            .referencePriceScaled(0L)
+            .timeInForcePreference(TimeInForce.GTC)
+            .urgencyHint((byte) 1)
+            .postOnlyPreference(ig.rueishi.nitroj.exchange.messages.BooleanType.TRUE)
+            .selfTradePolicy((byte) 0)
+            .correlationId(parentOrderId)
+            .legCount((byte) 1)
+            .leg2Side(Side.SELL)
+            .leg2LimitPriceScaled(0L)
+            .parentTimeoutMicros(0L);
+        parentIntentDecoder.wrapAndApplyHeader(egressBuffer, 0, headerDecoder);
+        if (executionEngine != null) {
+            executionEngine.submit(parentIntentDecoder);
+        }
         if (side == Side.BUY) {
-            liveBidClOrdId = clOrdId;
+            liveBidClOrdId = parentOrderId;
         } else {
-            liveAskClOrdId = clOrdId;
+            liveAskClOrdId = parentOrderId;
         }
     }
 
     private void cancelLiveQuotes() {
         if (liveBidClOrdId != 0L) {
-            submitCancel(liveBidClOrdId, Side.BUY, lastBidSize);
+            if (executionEngine != null) {
+                executionEngine.cancelParent(liveBidClOrdId, ParentOrderState.REASON_CANCELED_BY_PARENT);
+            }
             liveBidClOrdId = 0L;
         }
         if (liveAskClOrdId != 0L) {
-            submitCancel(liveAskClOrdId, Side.SELL, lastAskSize);
+            if (executionEngine != null) {
+                executionEngine.cancelParent(liveAskClOrdId, ParentOrderState.REASON_CANCELED_BY_PARENT);
+            }
             liveAskClOrdId = 0L;
         }
-    }
-
-    private void submitCancel(final long origClOrdId, final Side side, final long originalQtyScaled) {
-        final long cancelClOrdId = cluster == null ? 0L : cluster.logPosition();
-        cancelOrderEncoder.wrapAndApplyHeader(egressBuffer, 0, headerEncoder)
-            .cancelClOrdId(cancelClOrdId)
-            .origClOrdId(origClOrdId)
-            .venueId(config.venueId())
-            .instrumentId(config.instrumentId())
-            .side(side)
-            .originalQtyScaled(originalQtyScaled)
-            .putVenueOrderId(EMPTY_VENUE_ORDER_ID, 0, 0);
-        offer(MessageHeaderEncoder.ENCODED_LENGTH + cancelOrderEncoder.encodedLength());
     }
 
     private void suppress(final long durationMicros) {
@@ -302,12 +319,6 @@ public final class MarketMakingStrategy implements Strategy {
 
     private long nowMicros() {
         return cluster == null ? 0L : cluster.time();
-    }
-
-    private void offer(final int length) {
-        if (cluster != null) {
-            cluster.offer(egressBuffer, 0, length);
-        }
     }
 
     long lastBidPrice() { return lastBidPrice; }

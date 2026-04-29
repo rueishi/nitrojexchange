@@ -1,6 +1,6 @@
-# NitroJEx V12 Hot-Path Benchmark Evidence
+# NitroJEx V12/V13 Hot-Path Benchmark Evidence
 
-This module owns the V12 JMH evidence harness. Production code cannot claim
+This module owns the V12 and V13 JMH evidence harness. Production code cannot claim
 low latency, zero allocation, or zero GC for a declared hot path unless the
 current benchmark artifacts prove that path under the documented parameters.
 
@@ -62,7 +62,7 @@ Benchmarks must preallocate fixtures in `@Setup`. Any allocation reported by
 `-prof gc` in a measured steady-state hot path blocks a zero-allocation claim
 until it has an owner, reason, path classification, and remediation task.
 
-## V12 Surface Map
+## V12/V13 Surface Map
 
 Implemented benchmark owners:
 
@@ -84,8 +84,19 @@ RiskEngine decision -> RiskDecisionBenchmark
 StrategyEngine dispatch -> StrategyTickBenchmark
 MarketMakingStrategy tick -> StrategyTickBenchmark
 ArbStrategy tick -> StrategyTickBenchmark
+ParentOrderRegistry update/query -> ParentOrderRegistryBenchmark
+parent-to-child lookup -> ParentOrderRegistryBenchmark
+ExecutionStrategyEngine dispatch -> ExecutionStrategyEngineBenchmark
+ImmediateLimitExecution callback -> ImmediateLimitExecutionBenchmark
+PostOnlyQuoteExecution callback -> PostOnlyQuoteExecutionBenchmark
+MultiLegContingentExecution callback -> MultiLegContingentExecutionBenchmark
 order command encoding -> OrderEncodingBenchmark
 ```
+
+V13 execution evidence is interpreted the same way as V12 evidence: allocation
+runs use `-prof gc` and latency runs use nanosecond sample-time percentiles.
+The parent registry, execution engine, and three built-in execution strategies
+are mandatory release-gate surfaces before any V13 low-latency or zero-GC claim.
 
 Traceability placeholders for future implementation tasks:
 

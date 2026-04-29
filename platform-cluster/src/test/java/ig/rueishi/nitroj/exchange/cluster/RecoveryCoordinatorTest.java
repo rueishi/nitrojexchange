@@ -21,6 +21,8 @@ import ig.rueishi.nitroj.exchange.messages.RecoveryCompleteEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
 import ig.rueishi.nitroj.exchange.messages.VenueStatus;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
 import ig.rueishi.nitroj.exchange.order.OrderManagerImpl;
 import ig.rueishi.nitroj.exchange.test.CapturingPublication;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +42,7 @@ final class RecoveryCoordinatorTest {
     private static final int OTHER_VENUE = Ids.VENUE_COINBASE_SANDBOX;
     private static final int INSTRUMENT = Ids.INSTRUMENT_BTC_USD;
     private static final long CL_ORD_ID = 11_001L;
+    private static final long PARENT_ID = 91_001L;
     private static final long QTY = 10_000_000L;
     private static final long PRICE = 65_000L * Ids.SCALE;
 
@@ -190,6 +193,98 @@ final class RecoveryCoordinatorTest {
     }
 
     @Test
+    void parentSnapshot_roundTrip_preservesParentAndChildLink() {
+        final Harness harness = harnessWithParentOrder(true);
+        harness.parents.transition(PARENT_ID, ParentOrderState.HEDGING, ParentOrderState.REASON_NONE, 7L);
+        harness.parents.updateFill(PARENT_ID, QTY / 2L, QTY / 2L, PRICE);
+        final ParentOrderRegistry.Snapshot snapshot = harness.recovery.newParentSnapshot();
+        final Harness restored = harnessWithOrders(0);
+
+        harness.recovery.snapshotParentOrders(snapshot);
+        restored.recovery.loadParentSnapshot(snapshot);
+
+        final ParentOrderState parent = restored.parents.lookup(PARENT_ID);
+        assertThat(parent).isNotNull();
+        assertThat(parent.status()).isEqualTo(ParentOrderState.HEDGING);
+        assertThat(parent.filledQtyScaled()).isEqualTo(QTY / 2L);
+        assertThat(restored.parents.parentOrderIdByChild(CL_ORD_ID)).isEqualTo(PARENT_ID);
+        assertThat(harness.recovery.parentSnapshotWrites()).isEqualTo(1);
+        assertThat(restored.recovery.parentSnapshotLoads()).isEqualTo(1);
+    }
+
+    @Test
+    void parentRecovery_partiallyFilledChild_updatesParentStateAndCounters() {
+        final Harness harness = harnessWithParentOrder(true);
+        startRecovery(harness);
+
+        harness.recovery.reconcileOrder(exec(CL_ORD_ID, ExecType.PARTIAL_FILL, Side.BUY, PRICE, QTY / 2L, QTY / 2L, false));
+
+        final ParentOrderState parent = harness.parents.lookup(PARENT_ID);
+        assertThat(parent.status()).isEqualTo(ParentOrderState.PARTIALLY_FILLED);
+        assertThat(parent.filledQtyScaled()).isEqualTo(QTY / 2L);
+        assertThat(parent.remainingQtyScaled()).isEqualTo(QTY / 2L);
+        assertThat(harness.recovery.parentSyntheticFills()).isEqualTo(1);
+        assertThat(harness.recovery.parentPartialRecoveries()).isEqualTo(1);
+    }
+
+    @Test
+    void parentRecovery_hedgePendingFill_countsHedgeRecoveryAndCompletesParent() {
+        final Harness harness = harnessWithParentOrder(true);
+        harness.parents.transition(PARENT_ID, ParentOrderState.HEDGING, ParentOrderState.REASON_NONE, 9L);
+        startRecovery(harness);
+
+        harness.recovery.reconcileOrder(exec(CL_ORD_ID, ExecType.FILL, Side.BUY, PRICE, QTY, 0L, true));
+
+        final ParentOrderState parent = harness.parents.lookup(PARENT_ID);
+        assertThat(parent.status()).isEqualTo(ParentOrderState.DONE);
+        assertThat(parent.terminalReasonCode()).isEqualTo(ParentOrderState.REASON_COMPLETED);
+        assertThat(harness.recovery.parentHedgePendingRecoveries()).isEqualTo(1);
+        assertThat(harness.parents.activeChildCount(PARENT_ID)).isZero();
+    }
+
+    @Test
+    void parentRecovery_missingChildLink_repairsLinkAndCountsMismatch() {
+        final Harness harness = harnessWithParentOrder(false);
+        startRecovery(harness);
+
+        harness.recovery.reconcileOrder(exec(CL_ORD_ID, ExecType.ORDER_STATUS, Side.BUY, 0L, 0L, QTY, false));
+
+        assertThat(harness.parents.parentOrderIdByChild(CL_ORD_ID)).isEqualTo(PARENT_ID);
+        assertThat(harness.recovery.parentReconciliationMismatches()).isEqualTo(1);
+        assertThat(harness.risk.killSwitchReason).isNull();
+    }
+
+    @Test
+    void parentRecovery_childReferencesMissingParent_activatesKillSwitch() {
+        final Harness harness = harnessWithOrders(0);
+        harness.orders.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(), OrdType.LIMIT.value(),
+            TimeInForce.GTC.value(), PRICE, QTY, Ids.STRATEGY_MARKET_MAKING, PARENT_ID);
+        startRecovery(harness);
+
+        harness.recovery.reconcileOrder(exec(CL_ORD_ID, ExecType.ORDER_STATUS, Side.BUY, 0L, 0L, QTY, false));
+
+        assertThat(harness.risk.killSwitchReason).isEqualTo("parent_reconciliation_failed");
+        assertThat(harness.recovery.parentReconciliationMismatches()).isEqualTo(1);
+        assertThat(harness.recovery.unreconciledParentKillSwitches()).isEqualTo(1);
+    }
+
+    @Test
+    void parentRecovery_operationalCountersExposeSnapshotMismatchAndRegistryEvidence() {
+        final Harness harness = harnessWithParentOrder(false);
+        final ParentOrderRegistry.Snapshot snapshot = harness.recovery.newParentSnapshot();
+        harness.recovery.snapshotParentOrders(snapshot);
+        harness.recovery.loadParentSnapshot(snapshot);
+
+        harness.recovery.reconcileOrder(exec(CL_ORD_ID, ExecType.ORDER_STATUS, Side.BUY, 0L, 0L, QTY, false));
+        harness.parents.linkChild(PARENT_ID, CL_ORD_ID);
+
+        assertThat(harness.recovery.parentSnapshotWrites()).isEqualTo(1);
+        assertThat(harness.recovery.parentSnapshotLoads()).isEqualTo(1);
+        assertThat(harness.parents.duplicateChildLinks()).isEqualTo(1);
+        assertThat(harness.recovery.parentReconciliationMismatches()).isEqualTo(1);
+    }
+
+    @Test
     void multipleVenues_independentRecovery() {
         final Harness harness = harnessWithOrders(0);
 
@@ -229,10 +324,27 @@ final class RecoveryCoordinatorTest {
         for (int i = 0; i < count; i++) {
             orders.createPendingOrder(CL_ORD_ID + i, VENUE, INSTRUMENT, Side.BUY.value(), OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, Ids.STRATEGY_MARKET_MAKING);
         }
+        return harness(orders);
+    }
+
+    private Harness harnessWithParentOrder(final boolean linkChild) {
+        final OrderManagerImpl orders = new OrderManagerImpl();
+        orders.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(), OrdType.LIMIT.value(),
+            TimeInForce.GTC.value(), PRICE, QTY, Ids.STRATEGY_MARKET_MAKING, PARENT_ID);
+        final Harness harness = harness(orders);
+        harness.parents.claim(PARENT_ID, Ids.STRATEGY_MARKET_MAKING, 1, QTY, 1L);
+        if (linkChild) {
+            harness.parents.linkChild(PARENT_ID, CL_ORD_ID);
+        }
+        return harness;
+    }
+
+    private Harness harness(final OrderManagerImpl orders) {
+        final ParentOrderRegistry parents = new ParentOrderRegistry(8, 16);
         final RecordingRisk risk = new RecordingRisk();
         final PortfolioEngineImpl portfolio = new PortfolioEngineImpl(risk);
-        final RecoveryCoordinatorImpl recovery = new RecoveryCoordinatorImpl(orders, portfolio, risk, publication::offer);
-        return new Harness(orders, portfolio, risk, recovery);
+        final RecoveryCoordinatorImpl recovery = new RecoveryCoordinatorImpl(orders, portfolio, risk, parents, publication::offer);
+        return new Harness(orders, portfolio, risk, recovery, parents);
     }
 
     private FillEventDecoder syntheticFill() {
@@ -293,7 +405,8 @@ final class RecoveryCoordinatorTest {
         OrderManagerImpl orders,
         PortfolioEngineImpl portfolio,
         RecordingRisk risk,
-        RecoveryCoordinatorImpl recovery
+        RecoveryCoordinatorImpl recovery,
+        ParentOrderRegistry parents
     ) {
     }
 

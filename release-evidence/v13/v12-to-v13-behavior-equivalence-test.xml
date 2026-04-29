@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.strategy.V12ToV13BehaviorEquivalenceTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:42" hostname="LAPTOP-PGTQL50G" time="0.042">
+  <properties/>
+  <testcase name="marketMakingDefaultPostOnlyExecution_matchesV12QuoteFixture()" classname="ig.rueishi.nitroj.exchange.strategy.V12ToV13BehaviorEquivalenceTest" time="0.012"/>
+  <testcase name="arbDefaultMultiLegExecution_matchesV12RiskRejectFixture()" classname="ig.rueishi.nitroj.exchange.strategy.V12ToV13BehaviorEquivalenceTest" time="0.013"/>
+  <testcase name="arbDefaultMultiLegExecution_matchesV12ArbFixture()" classname="ig.rueishi.nitroj.exchange.strategy.V12ToV13BehaviorEquivalenceTest" time="0.015"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>

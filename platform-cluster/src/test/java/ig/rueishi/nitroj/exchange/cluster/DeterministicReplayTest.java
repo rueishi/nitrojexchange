@@ -3,7 +3,16 @@ package ig.rueishi.nitroj.exchange.cluster;
 import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.common.OrderStatus;
 import ig.rueishi.nitroj.exchange.common.RiskConfig;
+import ig.rueishi.nitroj.exchange.execution.ChildExecutionView;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContext;
+import ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecution;
+import ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecution;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderIntentView;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderState;
+import ig.rueishi.nitroj.exchange.execution.PostOnlyQuoteExecution;
 import ig.rueishi.nitroj.exchange.messages.BooleanType;
+import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.EntryType;
 import ig.rueishi.nitroj.exchange.messages.ExecType;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
@@ -14,13 +23,23 @@ import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderDecoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
+import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.OrdType;
+import ig.rueishi.nitroj.exchange.messages.ParentIntentType;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderIntentEncoder;
+import ig.rueishi.nitroj.exchange.messages.PriceMode;
 import ig.rueishi.nitroj.exchange.messages.Side;
 import ig.rueishi.nitroj.exchange.messages.TimeInForce;
 import ig.rueishi.nitroj.exchange.messages.UpdateAction;
 import ig.rueishi.nitroj.exchange.order.OrderManagerImpl;
 import ig.rueishi.nitroj.exchange.order.OrderState;
+import ig.rueishi.nitroj.exchange.registry.IdRegistry;
+import io.aeron.ExclusivePublication;
+import io.aeron.Image;
+import io.aeron.cluster.service.Cluster;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.concurrent.status.CountersManager;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -127,6 +146,23 @@ final class DeterministicReplayTest {
 
         assertThat(result).isEqualTo(ReplayHarness.apply(stream));
         assertThat(result.commands).containsExactly("RISK_REJECTED:3", "STALE_MARKET_DATA", "ARB_CHECK:" + 100L);
+    }
+
+    @Test
+    void v13ParentReplay_sameOrderedStreamProducesIdenticalParentStatesAndCommands() {
+        final ParentReplayResult first = ParentReplayHarness.apply();
+        final ParentReplayResult second = ParentReplayHarness.apply();
+
+        assertThat(second).isEqualTo(first);
+        assertThat(first.commands).containsExactly(
+            "POST_SUBMIT:5001",
+            "POST_PARTIAL:3",
+            "POST_REJECT_RETRY:5002",
+            "IMM_RISK_REJECT:4",
+            "MULTI_TIMER:7000",
+            "MULTI_HEDGE_FAILED:6",
+            "SNAPSHOT:3/2",
+            "CAPACITY:1");
     }
 
     private record ReplayEvent(
@@ -238,6 +274,207 @@ final class DeterministicReplayTest {
         long timerCount,
         long capacityDropCount,
         List<String> commands) {
+    }
+
+    private record ParentReplayResult(
+        byte postStatus,
+        long postFilled,
+        byte immediateStatus,
+        byte multiStatus,
+        byte multiReason,
+        long hedgeRejects,
+        long capacityRejects,
+        List<String> commands) {
+    }
+
+    private static final class ParentReplayHarness {
+        private final InternalMarketView marketView = new InternalMarketView();
+        private final ParentOrderRegistry registry = new ParentOrderRegistry(8, 8);
+        private final OrderManagerImpl orderManager = new OrderManagerImpl();
+        private final ReplayRisk risk = new ReplayRisk();
+        private final UnsafeBuffer commandBuffer = new UnsafeBuffer(new byte[1024]);
+        private final List<String> commands = new ArrayList<>();
+        private final PostOnlyQuoteExecution postOnly = new PostOnlyQuoteExecution();
+        private final ImmediateLimitExecution immediate = new ImmediateLimitExecution();
+        private final MultiLegContingentExecution multiLeg = new MultiLegContingentExecution();
+
+        static ParentReplayResult apply() {
+            final ParentReplayHarness harness = new ParentReplayHarness();
+            harness.initStrategies();
+            harness.runStream();
+            return harness.result();
+        }
+
+        private void initStrategies() {
+            final ExecutionStrategyContext ctx = new ExecutionStrategyContext(
+                marketView,
+                risk,
+                orderManager,
+                registry,
+                commandBuffer,
+                new MessageHeaderEncoder(),
+                new NewOrderCommandEncoder(),
+                new CancelOrderCommandEncoder(),
+                () -> 1L,
+                (correlationId, deadlineClusterMicros) -> true,
+                new ReplayIds(),
+                new CountersManager(new UnsafeBuffer(new byte[1024 * 1024]), new UnsafeBuffer(new byte[64 * 1024])));
+            postOnly.init(ctx);
+            immediate.init(ctx);
+            multiLeg.init(ctx);
+        }
+
+        private void runStream() {
+            postOnly.onParentIntent(parentIntent(4_001L, 5_001L, ParentIntentType.QUOTE, 2, 1_000L, 0, 0L));
+            commands.add("POST_SUBMIT:" + orderManager.getOrder(5_001L).clOrdId());
+            postOnly.onChildExecution(new ChildExecutionView().wrap(exec(5_001L, ExecType.FILL, 4L, 1L, 3L, false, "p-fill"), 4_001L));
+            commands.add("POST_PARTIAL:" + registry.lookup(4_001L).remainingQtyScaled());
+            postOnly.onChildExecution(new ChildExecutionView().wrap(exec(5_001L, ExecType.REJECTED, 0L, 0L, 3L, true, "p-rej"), 4_001L));
+            commands.add("POST_REJECT_RETRY:" + orderManager.getOrder(5_002L).clOrdId());
+
+            risk.rejectNonHedge = true;
+            immediate.onParentIntent(parentIntent(4_002L, 5_010L, ParentIntentType.IMMEDIATE_LIMIT, 1, 2_000L, 0, 0L));
+            commands.add("IMM_RISK_REJECT:" + registry.lookup(4_002L).terminalReasonCode());
+            risk.rejectNonHedge = false;
+
+            multiLeg.onParentIntent(parentIntent(6_001L, 7_000L, ParentIntentType.MULTI_LEG, 3, 3_000L, 2, 3_100L));
+            multiLeg.onChildExecution(new ChildExecutionView().wrap(exec(7_001L, ExecType.FILL, 3_000L, 1L, 0L, true, "m-fill"), 6_001L));
+            risk.rejectHedge = true;
+            multiLeg.onTimer(multiLeg.timerCorrelationId());
+            commands.add("MULTI_TIMER:" + 7_000L);
+            commands.add("MULTI_HEDGE_FAILED:" + registry.lookup(6_001L).terminalReasonCode());
+
+            final ParentOrderRegistry.Snapshot snapshot = registry.newSnapshot();
+            registry.snapshotInto(snapshot);
+            final ParentOrderRegistry restored = new ParentOrderRegistry(8, 8);
+            restored.loadFrom(snapshot);
+            commands.add("SNAPSHOT:" + restored.activeParents() + "/" + restored.activeChildLinks());
+
+            final ParentOrderRegistry small = new ParentOrderRegistry(1, 1);
+            small.claim(8_001L, Ids.STRATEGY_MARKET_MAKING, 2, 1L, 1L);
+            small.claim(8_002L, Ids.STRATEGY_MARKET_MAKING, 2, 1L, 1L);
+            commands.add("CAPACITY:" + small.parentCapacityRejects());
+        }
+
+        private ParentReplayResult result() {
+            return new ParentReplayResult(
+                registry.lookup(4_001L).status(),
+                registry.lookup(4_001L).filledQtyScaled(),
+                registry.lookup(4_002L).status(),
+                registry.lookup(6_001L).status(),
+                registry.lookup(6_001L).terminalReasonCode(),
+                multiLeg.hedgeRiskRejects(),
+                registry.parentCapacityRejects(),
+                List.copyOf(commands));
+        }
+    }
+
+    private static ParentOrderIntentView parentIntent(
+        final long parentOrderId,
+        final long correlationId,
+        final ParentIntentType intentType,
+        final int executionStrategyId,
+        final long price,
+        final int secondaryVenueId,
+        final long leg2Price
+    ) {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[256]);
+        new ParentOrderIntentEncoder()
+            .wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .parentOrderId(parentOrderId)
+            .strategyId((short) (intentType == ParentIntentType.MULTI_LEG ? Ids.STRATEGY_ARB : Ids.STRATEGY_MARKET_MAKING))
+            .executionStrategyId(executionStrategyId)
+            .intentType(intentType)
+            .side(Side.BUY)
+            .instrumentId(INSTRUMENT)
+            .primaryVenueId(VENUE)
+            .secondaryVenueId(secondaryVenueId)
+            .quantityScaled(1L)
+            .priceMode(PriceMode.LIMIT)
+            .limitPriceScaled(price)
+            .referencePriceScaled(0L)
+            .timeInForcePreference(intentType == ParentIntentType.QUOTE ? TimeInForce.GTC : TimeInForce.IOC)
+            .urgencyHint((byte) 1)
+            .postOnlyPreference(intentType == ParentIntentType.QUOTE ? BooleanType.TRUE : BooleanType.FALSE)
+            .selfTradePolicy((byte) 0)
+            .correlationId(correlationId)
+            .legCount((byte) (intentType == ParentIntentType.MULTI_LEG ? 2 : 1))
+            .leg2Side(Side.SELL)
+            .leg2LimitPriceScaled(leg2Price)
+            .parentTimeoutMicros(1_000L);
+        final ParentOrderIntentDecoder decoder = new ParentOrderIntentDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderDecoder());
+        return new ParentOrderIntentView().wrap(decoder);
+    }
+
+    private static ExecutionEventDecoder exec(
+        final long clOrdId,
+        final ExecType execType,
+        final long price,
+        final long fillQty,
+        final long leavesQty,
+        final boolean isFinal,
+        final String execId
+    ) {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[256]);
+        final byte[] execBytes = execId.getBytes(StandardCharsets.US_ASCII);
+        new ExecutionEventEncoder()
+            .wrapAndApplyHeader(buffer, 0, new MessageHeaderEncoder())
+            .clOrdId(clOrdId)
+            .venueId(VENUE)
+            .instrumentId(INSTRUMENT)
+            .execType(execType)
+            .side(Side.BUY)
+            .fillPriceScaled(price)
+            .fillQtyScaled(fillQty)
+            .cumQtyScaled(fillQty)
+            .leavesQtyScaled(leavesQty)
+            .rejectCode(0)
+            .ingressTimestampNanos(1L)
+            .exchangeTimestampNanos(1L)
+            .fixSeqNum(1)
+            .isFinal(isFinal ? BooleanType.TRUE : BooleanType.FALSE)
+            .putVenueOrderId(new byte[0], 0, 0)
+            .putExecId(execBytes, 0, execBytes.length);
+        final ExecutionEventDecoder decoder = new ExecutionEventDecoder();
+        decoder.wrapAndApplyHeader(buffer, 0, new MessageHeaderDecoder());
+        return decoder;
+    }
+
+    private static final class ReplayRisk implements RiskEngine {
+        boolean rejectNonHedge;
+        boolean rejectHedge;
+        boolean killSwitch;
+
+        @Override
+        public RiskDecision preTradeCheck(final int venueId, final int instrumentId, final byte side, final long priceScaled, final long qtyScaled, final int strategyId) {
+            if (rejectHedge && strategyId == Ids.STRATEGY_ARB_HEDGE) {
+                return RiskDecision.REJECT_MAX_NOTIONAL;
+            }
+            return rejectNonHedge ? RiskDecision.REJECT_MAX_NOTIONAL : RiskDecision.APPROVED;
+        }
+
+        @Override public void updatePositionSnapshot(final int venueId, final int instrumentId, final long netQtyScaled) { }
+        @Override public void updateDailyPnl(final long realizedPnlDeltaScaled) { }
+        @Override public void setRecoveryLock(final int venueId, final boolean locked) { }
+        @Override public long getDailyPnlScaled() { return 0L; }
+        @Override public void activateKillSwitch(final String reason) { killSwitch = true; }
+        @Override public void deactivateKillSwitch() { killSwitch = false; }
+        @Override public boolean isKillSwitchActive() { return killSwitch; }
+        @Override public void writeSnapshot(final ExclusivePublication snapshotPublication) { }
+        @Override public void loadSnapshot(final Image snapshotImage) { }
+        @Override public void resetDailyCounters() { }
+        @Override public void setCluster(final Cluster cluster) { }
+        @Override public void onFill(final ExecutionEventDecoder decoder) { }
+        @Override public void resetAll() { }
+    }
+
+    private static final class ReplayIds implements IdRegistry {
+        @Override public int venueId(final long sessionId) { return VENUE; }
+        @Override public int instrumentId(final CharSequence symbol) { return INSTRUMENT; }
+        @Override public String symbolOf(final int instrumentId) { return "BTC-USD"; }
+        @Override public String venueNameOf(final int venueId) { return "coinbase"; }
+        @Override public void registerSession(final int venueId, final long sessionId) { }
     }
 
     private static final class ReplayHarness {

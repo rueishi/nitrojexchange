@@ -2,8 +2,18 @@ package ig.rueishi.nitroj.exchange.cluster;
 
 import ig.rueishi.nitroj.exchange.common.ClusterNodeConfig;
 import ig.rueishi.nitroj.exchange.common.ConfigManager;
+import ig.rueishi.nitroj.exchange.common.ExecutionStrategyIds;
+import ig.rueishi.nitroj.exchange.common.Ids;
 import ig.rueishi.nitroj.exchange.common.InstrumentConfig;
 import ig.rueishi.nitroj.exchange.common.VenueConfig;
+import ig.rueishi.nitroj.exchange.execution.ClusterBackedExecutionClock;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyContext;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyRegistry;
+import ig.rueishi.nitroj.exchange.execution.ImmediateLimitExecution;
+import ig.rueishi.nitroj.exchange.execution.MultiLegContingentExecution;
+import ig.rueishi.nitroj.exchange.execution.ParentOrderRegistry;
+import ig.rueishi.nitroj.exchange.execution.PostOnlyQuoteExecution;
 import ig.rueishi.nitroj.exchange.messages.CancelOrderCommandEncoder;
 import ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder;
 import ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder;
@@ -25,7 +35,9 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.SystemEpochClock;
+import org.agrona.concurrent.status.CountersManager;
 
 /**
  * Process entry point for one NitroJEx Aeron Cluster node.
@@ -107,7 +119,33 @@ public final class ClusterMain {
         final RiskEngineImpl riskEngine = new RiskEngineImpl(config.risk());
         final OrderManagerImpl orderManager = new OrderManagerImpl();
         final PortfolioEngineImpl portfolio = new PortfolioEngineImpl(riskEngine);
-        final RecoveryCoordinatorImpl recovery = new RecoveryCoordinatorImpl(orderManager, portfolio, riskEngine);
+        final ParentOrderRegistry parentOrderRegistry = new ParentOrderRegistry();
+        final RecoveryCoordinatorImpl recovery = new RecoveryCoordinatorImpl(orderManager, portfolio, riskEngine, parentOrderRegistry);
+        final ClusterBackedExecutionClock executionClock = new ClusterBackedExecutionClock();
+        final ExecutionStrategyRegistry executionRegistry = new ExecutionStrategyRegistry();
+        executionRegistry.register(new ImmediateLimitExecution());
+        executionRegistry.register(new PostOnlyQuoteExecution());
+        executionRegistry.register(new MultiLegContingentExecution());
+        executionRegistry.allowCompatibility(Ids.STRATEGY_MARKET_MAKING, ExecutionStrategyIds.POST_ONLY_QUOTE);
+        executionRegistry.allowCompatibility(Ids.STRATEGY_MARKET_MAKING, ExecutionStrategyIds.IMMEDIATE_LIMIT);
+        executionRegistry.allowCompatibility(Ids.STRATEGY_ARB, ExecutionStrategyIds.MULTI_LEG_CONTINGENT);
+        final ExecutionStrategyContext executionContext = new ExecutionStrategyContext(
+            marketView,
+            riskEngine,
+            orderManager,
+            parentOrderRegistry,
+            new UnsafeBuffer(new byte[1024]),
+            new MessageHeaderEncoder(),
+            new NewOrderCommandEncoder(),
+            new CancelOrderCommandEncoder(),
+            executionClock,
+            executionClock,
+            idRegistry,
+            new CountersManager(
+                new UnsafeBuffer(new byte[1024 * 1024]),
+                new UnsafeBuffer(new byte[64 * 1024])));
+        final ExecutionStrategyEngine executionEngine = new ExecutionStrategyEngine(executionRegistry, executionContext);
+        executionClock.setExecutionStrategyEngine(executionEngine);
 
         final StrategyContextImpl strategyContext = new StrategyContextImpl(
             marketView,
@@ -115,6 +153,7 @@ public final class ClusterMain {
             orderManager,
             portfolio,
             recovery,
+            executionEngine,
             null,
             null,
             new MessageHeaderEncoder(),
@@ -124,6 +163,8 @@ public final class ClusterMain {
             null
         );
         final StrategyEngine strategyEngine = new StrategyEngine(strategyContext);
+        executionEngine.setParentCallbackSink(strategyEngine::onParentTerminal);
+        executionEngine.initRegisteredStrategies();
         if (config.marketMakingEnabled() && config.marketMaking() != null) {
             strategyEngine.register(new MarketMakingStrategy(config.marketMaking()));
         }
@@ -155,7 +196,7 @@ public final class ClusterMain {
             adminHandler
         );
         final DailyResetTimer dailyResetTimer = new DailyResetTimer(riskEngine, portfolio, SystemEpochClock.INSTANCE);
-        return new TradingClusteredService(strategyEngine, riskEngine, orderManager, portfolio, recovery, dailyResetTimer, router);
+        return new TradingClusteredService(strategyEngine, riskEngine, orderManager, portfolio, recovery, dailyResetTimer, router, executionClock);
     }
 
     private static MediaDriver.Context mediaDriverContext(final ClusterNodeConfig config) {

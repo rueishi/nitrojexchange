@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.RiskGateIntegrationTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:39" hostname="LAPTOP-PGTQL50G" time="0.006">
+  <properties/>
+  <testcase name="recoveryLock_onlyAffectedVenue_ordersForOtherVenueAllowed()" classname="ig.rueishi.nitroj.exchange.cluster.RiskGateIntegrationTest" time="0.001"/>
+  <testcase name="riskReject_doesNotUpdatePortfolio()" classname="ig.rueishi.nitroj.exchange.cluster.RiskGateIntegrationTest" time="0.001"/>
+  <testcase name="fillWithKillSwitchActive_orderStillApplied()" classname="ig.rueishi.nitroj.exchange.cluster.RiskGateIntegrationTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

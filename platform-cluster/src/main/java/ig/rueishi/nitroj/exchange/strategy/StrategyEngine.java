@@ -3,8 +3,10 @@ package ig.rueishi.nitroj.exchange.strategy;
 import ig.rueishi.nitroj.exchange.cluster.InternalMarketView;
 import ig.rueishi.nitroj.exchange.cluster.RiskEngine;
 import ig.rueishi.nitroj.exchange.cluster.TradingClusteredService;
+import ig.rueishi.nitroj.exchange.execution.ExecutionStrategyEngine;
 import ig.rueishi.nitroj.exchange.messages.ExecutionEventDecoder;
 import ig.rueishi.nitroj.exchange.messages.MarketDataEventDecoder;
+import ig.rueishi.nitroj.exchange.messages.ParentOrderTerminalDecoder;
 import io.aeron.cluster.service.Cluster;
 import java.util.ArrayList;
 import java.util.Objects;
@@ -137,8 +139,17 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void onMarketData(final MarketDataEventDecoder decoder) {
+        onMarketData(decoder, 0L);
+    }
+
+    @Override
+    public void onMarketData(final MarketDataEventDecoder decoder, final long clusterTimeMicros) {
         if (!active) {
             return;
+        }
+        final ExecutionStrategyEngine executionEngine = effectiveContext.executionEngine();
+        if (executionEngine != null && decoder != null) {
+            executionEngine.onMarketDataTick(decoder.venueId(), decoder.instrumentId(), clusterTimeMicros);
         }
         for (int i = 0, size = strategies.size(); i < size; i++) {
             strategies.get(i).onMarketData(decoder);
@@ -153,6 +164,15 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void onExecution(final ExecutionEventDecoder decoder, final boolean isFill) {
+        onExecution(decoder, isFill, 0L);
+    }
+
+    @Override
+    public void onExecution(final ExecutionEventDecoder decoder, final boolean isFill, final long parentOrderId) {
+        final ExecutionStrategyEngine executionEngine = effectiveContext.executionEngine();
+        if (executionEngine != null && parentOrderId > 0L) {
+            executionEngine.onChildExecution(decoder, parentOrderId);
+        }
         if (!active) {
             return;
         }
@@ -170,8 +190,18 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
      */
     @Override
     public void onTimer(final long correlationId) {
+        final ExecutionStrategyEngine executionEngine = effectiveContext.executionEngine();
+        if (executionEngine != null) {
+            executionEngine.routeTimerIfOwned(correlationId);
+        }
         for (int i = 0, size = strategies.size(); i < size; i++) {
             strategies.get(i).onTimer(correlationId);
+        }
+    }
+
+    public void onParentTerminal(final ParentOrderTerminalDecoder decoder) {
+        for (int i = 0, size = strategies.size(); i < size; i++) {
+            strategies.get(i).onParentTerminal(decoder);
         }
     }
 
@@ -230,6 +260,7 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
                 impl.orderManager(),
                 impl.portfolioEngine(),
                 impl.recoveryCoordinator(),
+                impl.executionEngine(),
                 cluster,
                 impl.egressBuffer(),
                 impl.headerEncoder(),
@@ -251,6 +282,7 @@ public final class StrategyEngine implements TradingClusteredService.StrategyLif
         @Override public ig.rueishi.nitroj.exchange.order.OrderManager orderManager() { return delegate.orderManager(); }
         @Override public ig.rueishi.nitroj.exchange.cluster.PortfolioEngine portfolioEngine() { return delegate.portfolioEngine(); }
         @Override public ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinator recoveryCoordinator() { return delegate.recoveryCoordinator(); }
+        @Override public ExecutionStrategyEngine executionEngine() { return delegate.executionEngine(); }
         @Override public org.agrona.concurrent.UnsafeBuffer egressBuffer() { return delegate.egressBuffer(); }
         @Override public ig.rueishi.nitroj.exchange.messages.MessageHeaderEncoder headerEncoder() { return delegate.headerEncoder(); }
         @Override public ig.rueishi.nitroj.exchange.messages.NewOrderCommandEncoder newOrderEncoder() { return delegate.newOrderEncoder(); }

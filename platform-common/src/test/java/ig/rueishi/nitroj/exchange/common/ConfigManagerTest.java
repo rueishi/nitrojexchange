@@ -100,7 +100,12 @@ final class ConfigManagerTest {
         assertThat(config.risk().maxDailyLossUsd()).isEqualTo(1_000_000_000_000L);
         assertThat(config.risk().instruments().get(Ids.INSTRUMENT_BTC_USD).softLimitPct()).isEqualTo(80);
         assertThat(config.marketMaking().baseQuoteSizeScaled()).isEqualTo(1_000_000L);
+        assertThat(config.marketMaking().executionStrategy().executionStrategyId())
+            .isEqualTo(ExecutionStrategyIds.POST_ONLY_QUOTE);
+        assertThat(config.marketMaking().executionStrategy().overrideCount()).isZero();
         assertThat(config.arb().takerFeeScaled()[Ids.VENUE_COINBASE]).isEqualTo(600_000L);
+        assertThat(config.arb().executionStrategy().executionStrategyId())
+            .isEqualTo(ExecutionStrategyIds.MULTI_LEG_CONTINGENT);
         assertThat(config.maxVenues()).isEqualTo(Ids.MAX_VENUES);
     }
 
@@ -120,6 +125,158 @@ final class ConfigManagerTest {
         final ClusterNodeConfig config = ConfigManager.loadCluster(copy.toString());
 
         assertThat(config.arb().cooldownAfterFailureMicros()).isZero();
+    }
+
+    @Test
+    void loadCluster_missingExecutionStrategy_usesStrategyTypeDefault() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-default-execution.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            .replace("executionStrategy                   = \"PostOnlyQuote\"\n", "")
+            .replace("executionStrategy          = \"MultiLegContingent\"\n", "");
+        Files.writeString(copy, toml);
+
+        final ClusterNodeConfig config = ConfigManager.loadCluster(copy.toString());
+
+        assertThat(config.marketMaking().executionStrategy().executionStrategyId())
+            .isEqualTo(ExecutionStrategyIds.POST_ONLY_QUOTE);
+        assertThat(config.arb().executionStrategy().executionStrategyId())
+            .isEqualTo(ExecutionStrategyIds.MULTI_LEG_CONTINGENT);
+        assertThat(config.marketMaking().executionStrategy().overrideCount()).isZero();
+    }
+
+    @Test
+    void loadCluster_executionOverride_validInstrumentVenueOverride() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-execution-override.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            + """
+
+            [[strategy.market_making.executionOverride]]
+            instrumentId = 2
+            venueId = 1
+            executionStrategy = "PostOnlyQuote"
+            """;
+        Files.writeString(copy, toml);
+
+        final ClusterNodeConfig config = ConfigManager.loadCluster(copy.toString());
+        final ExecutionStrategyOverrideConfig override =
+            config.marketMaking().executionStrategy().overrides()[0];
+
+        assertThat(config.marketMaking().executionStrategy().overrideCount()).isEqualTo(1);
+        assertThat(override.instrumentId()).isEqualTo(2);
+        assertThat(override.venueId()).isEqualTo(1);
+        assertThat(override.executionStrategyId()).isEqualTo(ExecutionStrategyIds.POST_ONLY_QUOTE);
+    }
+
+    @Test
+    void loadCluster_executionOverride_validVenueOnlyOverride() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-venue-override.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            + """
+
+            [[strategy.market_making.executionOverride]]
+            venueId = 1
+            executionStrategy = "PostOnlyQuote"
+            """;
+        Files.writeString(copy, toml);
+
+        final ExecutionStrategyOverrideConfig override =
+            ConfigManager.loadCluster(copy.toString()).marketMaking().executionStrategy().overrides()[0];
+
+        assertThat(override.instrumentId()).isEqualTo(ExecutionStrategyOverrideConfig.ANY_INSTRUMENT);
+        assertThat(override.venueId()).isEqualTo(1);
+    }
+
+    @Test
+    void loadCluster_unknownExecutionStrategy_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-unknown-execution.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            .replace("executionStrategy                   = \"PostOnlyQuote\"",
+                "executionStrategy                   = \"PeggedQuote\"");
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("strategy.market_making.executionStrategy")
+            .hasMessageContaining("PeggedQuote");
+    }
+
+    @Test
+    void loadCluster_incompatibleExecutionStrategy_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-incompatible-execution.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            .replace("executionStrategy                   = \"PostOnlyQuote\"",
+                "executionStrategy                   = \"MultiLegContingent\"");
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("not compatible");
+    }
+
+    @Test
+    void loadCluster_duplicateExecutionOverride_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-duplicate-override.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            + """
+
+            [[strategy.market_making.executionOverride]]
+            instrumentId = 2
+            venueId = 1
+            executionStrategy = "PostOnlyQuote"
+
+            [[strategy.market_making.executionOverride]]
+            instrumentId = 2
+            venueId = 1
+            executionStrategy = "PostOnlyQuote"
+            """;
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("duplicate execution strategy override");
+    }
+
+    @Test
+    void loadCluster_emptyExecutionStrategy_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-empty-execution.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            .replace("executionStrategy                   = \"PostOnlyQuote\"",
+                "executionStrategy                   = \"\"");
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("must not be blank");
+    }
+
+    @Test
+    void loadCluster_nonCanonicalExecutionStrategy_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-noncanonical-execution.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            .replace("executionStrategy                   = \"PostOnlyQuote\"",
+                "executionStrategy                   = \"postOnlyQuote\"");
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("unknown execution strategy ID")
+            .hasMessageContaining("postOnlyQuote");
+    }
+
+    @Test
+    void loadCluster_executionOverrideWithoutScope_throwsAtStartup() throws IOException {
+        final Path copy = tempDir.resolve("cluster-node-0-unscoped-override.toml");
+        final String toml = Files.readString(REPO_CONFIG_DIR.resolve("cluster-node-0.toml"))
+            + """
+
+            [[strategy.market_making.executionOverride]]
+            executionStrategy = "PostOnlyQuote"
+            """;
+        Files.writeString(copy, toml);
+
+        assertThatThrownBy(() -> ConfigManager.loadCluster(copy.toString()))
+            .isInstanceOf(ConfigValidationException.class)
+            .hasMessageContaining("override must set instrumentId, venueId, or both");
     }
 
     /**

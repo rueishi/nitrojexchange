@@ -1,18 +1,22 @@
 # NitroJExchange — High-Frequency Liquidity and Arbitrage Infrastructure
 ## A Multi-Venue, Multi-Strategy Pluggable Prop-Stack
 
-**NitroJ Exchange** is a Java 21 low-latency trading platform prototype , modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
+**NitroJ Exchange** is a Java 21 low-latency trading platform, modular execution stack purpose-built for multi-venue market making and statistical arbitrage. It abstracts exchange-specific complexities into a unified, pluggable framework, allowing for sub-microsecond risk-checks and automated liquidity provision across fragmented markets. It provides venue connectivity, market-data normalization, order/risk state, and deterministic cluster-side strategy execution, with plugin-oriented extension points for adding new exchange/broker venues plus new trading and execution strategies.
 
-The active development line is **V12.0**. V10.0 is preserved as the original frozen baseline, while V11.0 is now the frozen architecture baseline for multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage. V12.0 is the low-latency hardening and evidence line for deterministic, zero-allocation steady-state hot paths.
+The active development line is **V13.0**. V10.0 is preserved as the original frozen baseline, V11.0 is the frozen architecture baseline for multi-version FIX support, venue plugins, Coinbase FIX L3 support, L3-to-L2 derivation, consolidated L2 views, own-liquidity-aware arbitrage controls, and Coinbase simulator coverage, and V12.0 is the frozen low-latency hardening/evidence baseline for deterministic, zero-allocation steady-state hot paths. V13.0 supersedes V12.0 for the cluster strategy/execution layer only by adding a first-class execution strategy layer that separates trading intent from child-order execution.
 
 This repository is not a financial recommendation system. It is infrastructure code. Real venue connectivity must go through QA/UAT, credential review, exchange certification/onboarding, and production risk controls before live use.
 
 ## Current Status
 
 ```text
-Active spec:        NitroJEx_Master_Spec_V12.0.md
-Active plan:        nitrojex_implementation_plan_v3.0.0.md
-Migration doc:      NitroJEx_V11_to_V12_Migration.md
+Active spec:        NitroJEx_Master_Spec_V13.0.md
+Active plan:        nitrojex_implementation_plan_v4.0.0.md
+Migration doc:      NitroJEx_V12_to_V13_Migration.md
+Release evidence:   release-evidence/v13/README.md
+Frozen V12 spec:    NitroJEx_Master_Spec_V12.0.md
+Frozen V12 plan:    nitrojex_implementation_plan_v3.0.0.md
+V11->V12 migration: NitroJEx_V11_to_V12_Migration.md
 Frozen V11 spec:    NitroJEx_Master_Spec_V11.0.md
 Frozen V11 plan:    nitrojex_implementation_plan_v2.0.0.md
 V10->V11 migration: NitroJEx_V10_to_V11_Migration.md
@@ -20,7 +24,7 @@ Frozen V10 spec:    NitroJEx_Master_Spec_V10.0.md
 Frozen V10 plan:    nitrojex_implementation_plan_v1.4.0.md
 ```
 
-The codebase currently builds and passes automated checks locally with:
+Use the standard automated check command:
 
 ```bash
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew check
@@ -55,6 +59,40 @@ the conservative claim remains:
 NitroJEx is designed toward low-latency deterministic hot paths and has a roadmap to verified zero allocation / zero GC behavior. V11 is not yet benchmark-proven zero-GC.
 ```
 
+## V13 Execution Strategy Layer
+
+V13 introduces a first-class execution strategy layer between trading strategies
+and child order management. Trading strategies describe parent intent: quote,
+take, hedge, or arbitrage objective. Execution strategies decide how child orders
+are worked to realize that intent.
+
+V13 goals:
+
+- Add `ParentOrderIntent`, `ParentOrderUpdate`, and `ParentOrderTerminal` SBE messages.
+- Add bounded `ParentOrderRegistry` state and parent-to-child mapping.
+- Add `ExecutionStrategy`, `ExecutionStrategyContext`, and `ExecutionStrategyEngine`.
+- Migrate `MarketMakingStrategy` to emit quote parent intents instead of child commands.
+- Migrate `ArbStrategy` to emit multi-leg parent intents instead of owning leg/hedge lifecycle.
+- Add built-in `ImmediateLimitExecution`, `PostOnlyQuoteExecution`, and `MultiLegContingentExecution`.
+- Preserve V12 external behavior for `MarketMakingStrategy` and `ArbStrategy` when default execution strategies are used.
+- Preserve V12 deterministic replay, hot-path allocation, own-order overlay, external-liquidity, risk, simulator, and benchmark gates.
+- Require full task-owned expected-result coverage for parent cancel races, child rejects, timer races, hedging imbalance, hedge rejection, parent replay, snapshot/load, integration, E2E, and allocation evidence.
+
+Default execution strategy mapping:
+
+```text
+MarketMaking -> PostOnlyQuote
+Arb          -> MultiLegContingent
+one-shot     -> ImmediateLimit
+```
+
+Every child order still passes pre-trade risk. `OrderState.parentOrderId` is the
+authoritative child-to-parent attribution field on the hot path, while
+`ParentOrderRegistry` owns parent lifecycle, active child lists, parent
+fill aggregation, terminal reasons, snapshot/load, and parent recovery evidence.
+
+V13 explicitly does not add TWAP, VWAP, POV, pegged order algorithms, smart order routing, new venue plugins, new FIX protocol plugins, or RiskEngine semantic changes.
+
 ## Major Capabilities
 
 - Multi-module Gradle build targeting Java 21.
@@ -75,7 +113,8 @@ NitroJEx is designed toward low-latency deterministic hot paths and has a roadma
 - Built-in `MarketMakingStrategy` for quote generation using venue market data, spread configuration, inventory skew, quote sizing, and staleness checks.
 - Built-in `ArbStrategy` for venue and cross-venue arbitrage using executable edge, external-liquidity views, risk checks, and multi-leg order submission.
 - Strategy plugin extension model via `Strategy`, `StrategyContext`, and `StrategyEngine`, allowing additional strategies to be registered without changing the FIX or venue plugin layers.
-- Execution strategy extension model for future order-routing and execution algorithms such as TWAP, VWAP, smart order routing, pegged quoting, post-only management, liquidity taking, and hedge execution.
+- Execution strategy extension model for future order-routing and execution algorithms such as TWAP, VWAP, POV, smart order routing, pegged quoting, iceberg, and child-order slicing.
+- V13 execution strategy layer for parent intents, parent state, and deterministic child-order lifecycle ownership.
 - Coinbase exchange simulator plus deterministic L2/L3 simulator and live-wire E2E tests before real Coinbase QA/UAT.
 - Startup scripts for one gateway process per venue.
 
@@ -95,9 +134,12 @@ NitroJEx is designed toward low-latency deterministic hot paths and has a roadma
 ├── NitroJEx_V10_to_V11_Migration.md
 ├── NitroJEx_Master_Spec_V12.0.md
 ├── NitroJEx_V11_to_V12_Migration.md
+├── NitroJEx_Master_Spec_V13.0.md
+├── NitroJEx_V12_to_V13_Migration.md
 ├── nitrojex_implementation_plan_v1.4.0.md
 ├── nitrojex_implementation_plan_v2.0.0.md
-└── nitrojex_implementation_plan_v3.0.0.md
+├── nitrojex_implementation_plan_v3.0.0.md
+└── nitrojex_implementation_plan_v4.0.0.md
 ```
 
 ## Modules
@@ -281,6 +323,16 @@ publishes the automated latency evidence. For the declared trading hot path,
 `0 B/op` after warmup is the target. Any non-zero allocation must be treated as
 evidence, not embarrassment: document the benchmark, owner, reason, and
 remediation task before claiming zero-allocation readiness.
+
+Run the V13 preflight gate:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 scripts/v13-preflight-check.sh
+```
+
+The V13 gate extends the V12 evidence set with parent/execution replay,
+snapshot/recovery, live-wire parent-intent E2E, and parent/execution JMH
+surfaces.
 
 The default `test` task excludes tests tagged:
 
@@ -522,13 +574,13 @@ Coinbase STP is implemented as venue-specific order-entry enrichment in `Coinbas
 
 ### Strategy Extension
 
-New strategies plug into the cluster-side strategy layer by implementing `Strategy` and registering with `StrategyEngine`. The gateway, FIX plugin, and venue plugin layers do not need strategy-specific changes as long as the strategy consumes normalized market data and submits commands through the shared context.
+New trading strategies plug into the cluster-side strategy layer by implementing `Strategy` and registering with `StrategyEngine`. The gateway, FIX plugin, and venue plugin layers do not need strategy-specific changes as long as the strategy consumes normalized market data and submits parent intents through the shared context.
 
-`StrategyContext` is the supported dependency surface for strategy plugins. It exposes the internal market view, external liquidity view, risk engine, order manager, portfolio engine, recovery coordinator, SBE command encoders, ID registry, counters, and Aeron cluster reference.
+`StrategyContext` is the supported dependency surface for strategy plugins. In V13 it exposes the execution engine in addition to the internal market view, external liquidity view, risk engine, order manager, portfolio engine, recovery coordinator, ID registry, counters, and Aeron cluster reference.
 
-Trading strategy plugins decide what the system wants to do, such as quote, hedge, arbitrage, rebalance, or flatten risk. Execution strategy plugins can be added below that layer to decide how orders should be worked at a venue, such as immediate-or-cancel taking, post-only quoting, TWAP, VWAP, smart order routing, pegged orders, or child-order slicing.
+Trading strategy plugins decide what the system wants to do, such as quote, hedge, arbitrage, rebalance, or flatten risk. V13 execution strategy plugins decide how child orders should be worked for that parent intent. The V13 built-ins are immediate limit, post-only quote execution, and multi-leg contingent execution; TWAP, VWAP, POV, smart order routing, pegged orders, iceberg, and child-order slicing remain future release work.
 
-Production strategy implementations should remain deterministic under replay, avoid blocking work on the cluster thread, route all orders through risk/order APIs, and keep hot-path allocation behavior compatible with the V12 low-latency hardening plan.
+Production strategy and execution implementations should remain deterministic under replay, avoid blocking work on the cluster thread, route every child order through risk/order APIs, and keep hot-path allocation behavior compatible with the V12/V13 low-latency hardening plan.
 
 ## FIX and Venue Plugin Design
 
@@ -596,9 +648,9 @@ Normal compile/check tasks already depend on the required generation tasks.
 
 ## Development Rules
 
-- Do not modify frozen V10 or V11 spec/plan files.
-- Use V12 spec and plan for active work.
-- Use task IDs `TASK-201` and above for V12.
+- Do not modify frozen V10, V11, or V12 spec/plan/migration files except for approved archival corrections.
+- Use V13 spec and plan for active work.
+- Use task IDs `TASK-301` and above for V13.
 - Treat FIX parsing, SBE encode/decode, gateway handoff, book mutation, order state, risk, strategy tick, and order encoding as steady-state hot paths.
 - Keep allocation-heavy work in cold/control paths: startup, config, admin, tooling, simulator, REST polling, diagnostics, and tests.
 - Keep venue-specific behavior out of FIX protocol plugins.
@@ -673,17 +725,109 @@ Check:
 - credential resolver provides API key, secret, and passphrase
 - selected FIX protocol plugin matches the venue config
 
+## V13 Operations Runbooks
+
+These runbooks are for the parent/execution strategy layer. They do not replace
+venue outage, FIX session, credential, or risk runbooks.
+
+### Parent Stuck
+
+Signal: a parent remains `PENDING`, `WORKING`, `PARTIALLY_FILLED`, `HEDGING`, or
+`CANCEL_PENDING` beyond its configured timer or operational SLA.
+
+Actions:
+
+- Check `ParentOrderRegistry` active parent count and parent terminal counters.
+- Confirm active child links for the parent and inspect matching
+  `OrderState.parentOrderId`.
+- If no live child exists, cancel the parent through the execution engine and
+  record `EXECUTION_ABORTED`.
+- If a live child exists, cancel the child first, then wait for the parent
+  terminal callback.
+- If snapshot/recovery lost parent evidence or child attribution is inconsistent,
+  activate the kill switch and reconcile before resuming.
+
+### Child Stuck
+
+Signal: a child order remains live or pending cancel while its parent has
+terminal state, or a child execution report references an unknown parent.
+
+Actions:
+
+- Use `OrderState.parentOrderId` as the source of truth for attribution.
+- Check `ParentOrderRegistry.parentOrderIdByChild(childClOrdId)` for active link
+  evidence.
+- Send a cancel for the child if the venue still reports it live.
+- If the child references a missing parent, treat it as unreconciled risk and
+  keep the kill switch active until order, balance, and parent evidence match.
+
+### Hedge Rejected
+
+Signal: `MultiLegContingentExecution` emits `HEDGE_FAILED`,
+`hedge_risk_reject`, or `hedge_venue_reject`.
+
+Actions:
+
+- Keep the kill switch active.
+- Confirm the filled leg quantity, pending leg cancel state, and attempted hedge
+  child ID.
+- Reconcile venue order status and balances before clearing the kill switch.
+- Keep `ArbStrategy` cooldown active from the parent terminal callback.
+
+### Post-Only Reject Loop
+
+Signal: repeated post-only rejects or parent terminal reason `CHILD_REJECTED`
+from `PostOnlyQuoteExecution`.
+
+Actions:
+
+- Verify the one-tick-deeper retry occurred once.
+- Confirm market data is fresh and best bid/ask did not cross NitroJEx's quote.
+- Leave market-making suppression/cooldown active if rejects repeat.
+- Do not increase retry count without new replay, allocation, and simulator
+  evidence.
+
+### Capacity Full
+
+Signal: parent capacity, child-link capacity, or order-state pool capacity
+reject counters increase.
+
+Actions:
+
+- Stop accepting new parent intents for the affected strategy instance.
+- Snapshot active parents, active child links, and live child orders.
+- Increase configured capacity only after JMH and recovery tests prove the new
+  bound remains deterministic and allocation-free after warmup.
+- Do not claim V13 zero-allocation readiness while capacity rejects are active
+  in the release evidence.
+
+### Rollback To V12
+
+Signal: parent registry, execution engine, benchmark, replay, or live-wire
+parent-intent evidence fails after deployment rehearsal.
+
+Actions:
+
+- Stop the V13 cluster and gateway processes.
+- Restore frozen V12 binaries and V12 strategy configuration.
+- Use V12 migration and preflight documentation as the active release record.
+- Reconcile all live venue orders and balances before allowing V12 strategy
+  traffic.
+- Do not use real Coinbase QA/UAT to compensate for missing V13 local evidence.
+
 ## Release Readiness
 
-V12 production connectivity claims require evidence, not intent. Real Coinbase
+V13 production connectivity claims require evidence, not intent. Real Coinbase
 QA/UAT remains blocked until the automated gates in
-`config/v12-production-preflight.toml` and `scripts/v12-preflight-check.sh` pass
-and the manual operational evidence is attached to the release record.
+`config/v12-production-preflight.toml`, `scripts/v12-preflight-check.sh`, and
+`config/v13-production-preflight.toml`, `scripts/v13-preflight-check.sh` pass and
+the manual operational evidence is attached to the release record.
 
 Before production:
 
-- Run `scripts/v12-preflight-check.sh` and archive unit, integration, simulator,
-  live-wire E2E, deterministic replay, JMH, and latency-report artifacts.
+- Run `scripts/v13-preflight-check.sh` and archive unit, integration, simulator,
+  live-wire E2E, deterministic replay, parent snapshot/recovery, parent-intent
+  live-wire E2E, JMH, and latency-report artifacts.
 - Prove secrets handling and credential rotation: credentials must come from the
   approved secret source or injected environment, repository configs must remain
   non-production, and rotation must be rehearsed without code changes.

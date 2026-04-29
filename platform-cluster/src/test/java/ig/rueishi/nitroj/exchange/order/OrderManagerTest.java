@@ -36,6 +36,7 @@ final class OrderManagerTest {
     private static final int INSTRUMENT = Ids.INSTRUMENT_BTC_USD;
     private static final int STRATEGY = Ids.STRATEGY_MARKET_MAKING;
     private static final long CL_ORD_ID = 1001L;
+    private static final long PARENT_ORDER_ID = 9001L;
     private static final long PRICE = 65_000L * Ids.SCALE;
     private static final long QTY = 10L * Ids.SCALE;
 
@@ -317,6 +318,93 @@ final class OrderManagerTest {
     }
 
     @Test
+    void createOrder_withParent_storesParentAttribution() {
+        final OrderManagerImpl manager = manager();
+
+        manager.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(),
+            OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY, PARENT_ORDER_ID);
+
+        assertThat(manager.getOrder(CL_ORD_ID).parentOrderId()).isEqualTo(PARENT_ORDER_ID);
+    }
+
+    @Test
+    void createOrder_withoutParent_usesUnparentedSentinel() {
+        final OrderManagerImpl manager = managerWithOrder();
+
+        assertThat(manager.getOrder(CL_ORD_ID).parentOrderId()).isZero();
+    }
+
+    @Test
+    void childExecution_retainsParentAttributionAcrossAckAndPartialFill() {
+        final OrderManagerImpl manager = managerWithParentOrder(PARENT_ORDER_ID);
+
+        manager.onExecution(exec(CL_ORD_ID, ExecType.NEW, 0L, 0L, 0L, QTY, false, "ack-1"));
+        manager.onExecution(fill(CL_ORD_ID, 4L * Ids.SCALE, 4L * Ids.SCALE, 6L * Ids.SCALE, false, "fill-1"));
+
+        final OrderState order = manager.getOrder(CL_ORD_ID);
+        assertThat(order.parentOrderId()).isEqualTo(PARENT_ORDER_ID);
+        assertThat(order.status()).isEqualTo(OrderStatus.PARTIALLY_FILLED);
+    }
+
+    @Test
+    void duplicateExecReport_doesNotChangeParentAttribution() {
+        final OrderManagerImpl manager = managerWithParentOrder(PARENT_ORDER_ID);
+        manager.onExecution(exec(CL_ORD_ID, ExecType.NEW, 0L, 0L, 0L, QTY, false, "ack-1"));
+
+        manager.onExecution(fill(CL_ORD_ID, 1L * Ids.SCALE, 1L * Ids.SCALE, 9L * Ids.SCALE, false, "dup-parent"));
+        manager.onExecution(fill(CL_ORD_ID, 1L * Ids.SCALE, 2L * Ids.SCALE, 8L * Ids.SCALE, false, "dup-parent"));
+
+        assertThat(manager.getOrder(CL_ORD_ID).parentOrderId()).isEqualTo(PARENT_ORDER_ID);
+        assertThat(manager.duplicateExecutionReportCount()).isEqualTo(1);
+    }
+
+    @Test
+    void unknownOrderExecution_doesNotCreateParentAttribution() {
+        final OrderManagerImpl manager = manager();
+
+        assertThat(manager.onExecution(exec(CL_ORD_ID, ExecType.NEW, 0L, 0L, 0L, QTY, false, "unknown-1"))).isFalse();
+
+        assertThat(manager.getOrder(CL_ORD_ID)).isNull();
+        assertThat(manager.invalidTransitionCount()).isEqualTo(1);
+    }
+
+    @Test
+    void cancelAllOrders_retainsParentAttributionWhileCancelPending() {
+        final OrderManagerImpl manager = managerWithParentOrder(PARENT_ORDER_ID);
+        manager.onExecution(exec(CL_ORD_ID, ExecType.NEW, 0L, 0L, 0L, QTY, false, "ack-1"));
+
+        manager.cancelAllOrders();
+
+        final OrderState order = manager.getOrder(CL_ORD_ID);
+        assertThat(order.status()).isEqualTo(OrderStatus.PENDING_CANCEL);
+        assertThat(order.parentOrderId()).isEqualTo(PARENT_ORDER_ID);
+    }
+
+    @Test
+    void terminalRelease_resetsParentAttributionBeforeReuse() {
+        final OrderManagerImpl manager = managerWithParentOrder(PARENT_ORDER_ID);
+
+        manager.onExecution(reject(CL_ORD_ID, "rej-parent"));
+        manager.createPendingOrder(2002L, VENUE, INSTRUMENT, Side.BUY.value(),
+            OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY);
+
+        assertThat(manager.getOrder(2002L).parentOrderId()).isZero();
+    }
+
+    @Test
+    void parentOrderId_edgeValuesAccepted() {
+        final OrderManagerImpl manager = manager();
+
+        manager.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(),
+            OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY, 0L);
+        manager.createPendingOrder(CL_ORD_ID + 1L, VENUE, INSTRUMENT, Side.SELL.value(),
+            OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY, Long.MAX_VALUE);
+
+        assertThat(manager.getOrder(CL_ORD_ID).parentOrderId()).isZero();
+        assertThat(manager.getOrder(CL_ORD_ID + 1L).parentOrderId()).isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
     void terminalState_orderReturnedToPool() {
         final OrderManagerImpl manager = managerWithOrder();
 
@@ -385,6 +473,7 @@ final class OrderManagerTest {
 
         final OrderState copy = restored.getOrder(CL_ORD_ID);
         assertThat(copy.clOrdId).isEqualTo(original.clOrdId);
+        assertThat(copy.parentOrderId).isEqualTo(original.parentOrderId);
         assertThat(copy.venueId).isEqualTo(original.venueId);
         assertThat(copy.instrumentId).isEqualTo(original.instrumentId);
         assertThat(copy.strategyId).isEqualTo(original.strategyId);
@@ -409,6 +498,17 @@ final class OrderManagerTest {
         restored.loadSnapshotFragments(manager.snapshotFragments());
 
         assertThat(restored.getOrder(CL_ORD_ID).venueOrderId()).isEqualTo("venue-1001");
+    }
+
+    @Test
+    void snapshot_loadRestoresParentOrderId() {
+        final OrderManagerImpl manager = managerWithParentOrder(PARENT_ORDER_ID);
+        manager.onExecution(exec(CL_ORD_ID, ExecType.NEW, 0L, 0L, 0L, QTY, false, "ack-1"));
+
+        final OrderManagerImpl restored = manager();
+        restored.loadSnapshotFragments(manager.snapshotFragments());
+
+        assertThat(restored.getOrder(CL_ORD_ID).parentOrderId()).isEqualTo(PARENT_ORDER_ID);
     }
 
     @Test
@@ -450,6 +550,13 @@ final class OrderManagerTest {
     private OrderManagerImpl managerWithOrder() {
         final OrderManagerImpl manager = manager();
         manager.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(), OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY);
+        return manager;
+    }
+
+    private OrderManagerImpl managerWithParentOrder(final long parentOrderId) {
+        final OrderManagerImpl manager = manager();
+        manager.createPendingOrder(CL_ORD_ID, VENUE, INSTRUMENT, Side.BUY.value(),
+            OrdType.LIMIT.value(), TimeInForce.GTC.value(), PRICE, QTY, STRATEGY, parentOrderId);
         return manager;
     }
 

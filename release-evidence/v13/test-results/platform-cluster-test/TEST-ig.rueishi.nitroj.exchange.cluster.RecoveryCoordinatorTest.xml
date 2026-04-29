@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" tests="22" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:54:38" hostname="LAPTOP-PGTQL50G" time="0.073">
+  <properties/>
+  <testcase name="orderQueryResponse_venueCanceled_orderForceCanceled()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.011"/>
+  <testcase name="snapshot_recoveryStatePreserved()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.004"/>
+  <testcase name="parentRecovery_childReferencesMissingParent_activatesKillSwitch()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="multipleVenues_independentRecovery()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="disconnectDuringRecovery_resetAndRestart()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="balanceReconciliation_exceedsTolerance_killSwitchActivated()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="balanceReconciliation_withinTolerance_tradingResumes()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.001"/>
+  <testcase name="recoveryCompleteEvent_publishedOnSuccess()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="idleVenue_connectedEvent_noQuerySent()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="parentRecovery_missingChildLink_repairsLinkAndCountsMismatch()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="parentRecovery_partiallyFilledChild_updatesParentStateAndCounters()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.004"/>
+  <testcase name="orderQueryTimeout_timerCorrelId_2000PlusVenueId()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="onDisconnect_venueStateAwaitingReconnect()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="orderQueryTimeout_10s_killSwitchActivated()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="parentRecovery_operationalCountersExposeSnapshotMismatchAndRegistryEvidence()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="balanceQueryTimeout_5s_killSwitchActivated()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.001"/>
+  <testcase name="onReconnect_orderQuerySent_stateQueryingOrders()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.001"/>
+  <testcase name="orderQueryResponse_missingFill_syntheticFillApplied()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="parentRecovery_hedgePendingFill_countsHedgeRecoveryAndCompletesParent()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <testcase name="orderQueryResponse_orphanAtVenue_cancelSent()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.001"/>
+  <testcase name="parentSnapshot_roundTrip_preservesParentAndChildLink()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.003"/>
+  <testcase name="orderQueryResponse_matches_tradingResumes()" classname="ig.rueishi.nitroj.exchange.cluster.RecoveryCoordinatorTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

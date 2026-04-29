@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ig.rueishi.nitroj.exchange.e2e.CoinbaseFixL2LiveWireE2ETest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-04-29T00:55:22" hostname="LAPTOP-PGTQL50G" time="1.15">
+  <properties/>
+  <testcase name="l2LiveWire_edgeAndDisconnectCases_areDeterministic()" classname="ig.rueishi.nitroj.exchange.e2e.CoinbaseFixL2LiveWireE2ETest" time="0.608"/>
+  <testcase name="l2LiveWire_marketDataOrderExecutionAndFailureCases_areCovered()" classname="ig.rueishi.nitroj.exchange.e2e.CoinbaseFixL2LiveWireE2ETest" time="0.537"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+AtomicBuffer was created from a byte[] and is not correctly aligned by 8
+]]></system-err>
+</testsuite>
